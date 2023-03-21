@@ -1,6 +1,7 @@
 package sockchat
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -27,7 +28,9 @@ func TestSockChat(t *testing.T) {
 
 	t.Run("create a chat channel", func(t *testing.T) {
 
-		channelName := "Foo420"
+		newChannel := Channel{Name: "Foo420"}
+		payloadBytes, _ := json.Marshal(newChannel)
+		request := WSMsg{Action: "create", Payload: payloadBytes}
 
 		channels := &StubChannelStore{make(map[string]int)}
 		server := httptest.NewServer(NewSockChatServer(channels))
@@ -36,8 +39,8 @@ func TestSockChat(t *testing.T) {
 		defer server.Close()
 		defer ws.Close()
 
-		writeWSMessage(t, ws, channelName)
-		AssertChannelExists(t, channels, channelName)
+		mustWriteWSMessage(t, ws, request)
+		AssertChannelExists(t, channels, newChannel.Name)
 	})
 }
 
@@ -51,9 +54,13 @@ func mustDialWS(t *testing.T, url string) *websocket.Conn {
 	return ws
 }
 
-func writeWSMessage(t testing.TB, conn *websocket.Conn, message string) {
+func mustWriteWSMessage(t testing.TB, conn *websocket.Conn, message WSMsg) {
 	t.Helper()
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
+	payloadBytes, err := json.Marshal(message)
+	if err != nil {
+		t.Fatalf("could not marshal message before sending to the server %v", err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, payloadBytes); err != nil {
 		t.Fatalf("could not send message over ws connection %v", err)
 	}
 }

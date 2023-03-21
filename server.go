@@ -1,6 +1,7 @@
 package sockchat
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -16,6 +17,15 @@ type ChannelStore interface {
 type SockchatServer struct {
 	store ChannelStore
 	http.Handler
+}
+
+type WSMsg struct {
+	Action  string          `json:"action"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+type Channel struct {
+	Name string `json:"name"`
 }
 
 func NewSockChatServer(store ChannelStore) *SockchatServer {
@@ -38,8 +48,17 @@ var wsUpgrader = websocket.Upgrader{
 
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
-	channelName := conn.WaitForMsg()
-	s.store.CreateChannel(string(channelName))
+	receivedMsg := conn.WaitForMsg()
+	log.Print(receivedMsg)
+	switch receivedMsg.Action {
+	case "create":
+		channel := Channel{}
+		if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
+			log.Printf("error while unmarshaling request for creating channel: %v", err)
+		}
+		s.store.CreateChannel(channel.Name)
+	}
+
 }
 
 type SockChatWS struct {
@@ -56,10 +75,13 @@ func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
 	return &SockChatWS{conn}
 }
 
-func (w *SockChatWS) WaitForMsg() string {
-	_, msg, err := w.ReadMessage()
+func (w *SockChatWS) WaitForMsg() WSMsg {
+	_, msgBytes, err := w.ReadMessage()
 	if err != nil {
 		log.Printf("error reading from websocket %v\n", err)
 	}
-	return string(msg)
+	msg := WSMsg{}
+
+	json.Unmarshal(msgBytes, &msg)
+	return msg
 }
