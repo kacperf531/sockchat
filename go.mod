@@ -1,3 +1,5 @@
 module github.com/kacperf531/sockchat
 
 go 1.20
+
+require github.com/gorilla/websocket v1.5.0
