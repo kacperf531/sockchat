@@ -40,12 +40,12 @@ func (store *StubChannelStore) JoinChannel(channelName string, conn *SockChatWS)
 func TestSockChat(t *testing.T) {
 	store := &StubChannelStore{map[string]*Channel{"Foo420": {}}}
 	server := httptest.NewServer(NewSockChatServer(store))
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
 
+	defer ws.Close()
 	defer server.Close()
 
 	t.Run("create a chat channel", func(t *testing.T) {
-		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
-		defer ws.Close()
 
 		newChannel := Channel{Name: "Foo123"}
 		payloadBytes, _ := json.Marshal(newChannel)
@@ -62,8 +62,6 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("can not create channel with existing name", func(t *testing.T) {
-		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
-		defer ws.Close()
 
 		newChannel := Channel{Name: "Foo420"}
 		payloadBytes, _ := json.Marshal(newChannel)
@@ -77,9 +75,20 @@ func TestSockChat(t *testing.T) {
 		}
 	})
 
+	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
+
+		channelName := "Foo420"
+		request := NewSocketMessage("send_message", map[string]string{"text": "foo", "channel": channelName})
+		mustWriteWSMessage(t, ws, request)
+		got := mustReadWSMessage(t, ws).Action
+		want := "invalid_request_received"
+		if got != want {
+			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
+		}
+
+	})
+	// TODO: test if can not join same channel twice
 	t.Run("can join a channel", func(t *testing.T) {
-		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
-		defer ws.Close()
 
 		channelName := "Foo420"
 		payloadBytes, _ := json.Marshal(Channel{Name: channelName})
@@ -95,6 +104,28 @@ func TestSockChat(t *testing.T) {
 		if channelUserCount != 1 {
 			t.Errorf("expected exactly 1 user connected to %s channel, got %d", channelName, channelUserCount)
 		}
+	})
+
+	t.Run("can send a message to a channel", func(t *testing.T) {
+
+		channelName := "Foo420"
+		request := NewSocketMessage("join", Channel{Name: channelName})
+
+		mustWriteWSMessage(t, ws, request)
+		got := mustReadWSMessage(t, ws).Action
+		want := "channel_joined"
+		if got != want {
+			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
+		}
+
+		request = NewSocketMessage("send_message", map[string]string{"text": "foo", "channel": channelName})
+		mustWriteWSMessage(t, ws, request)
+		got = mustReadWSMessage(t, ws).Action
+		want = "new_message"
+		if got != want {
+			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
+		}
+
 	})
 
 }

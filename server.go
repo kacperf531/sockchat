@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/exp/slices"
 )
 
 // ChannelStore stores information about channels
@@ -20,15 +21,8 @@ type SockchatServer struct {
 	http.Handler
 }
 
-type SocketMessage struct {
-	Action  string          `json:"action"`
-	Payload json.RawMessage `json:"payload"`
-}
-
-type Channel struct {
-	Name     string `json:"name"`
-	Users    []*SockChatWS
-	Messages []string
+func (c *Channel) SendMessage(text string) {
+	c.Messages = append(c.Messages, text)
 }
 
 func NewSocketMessage(action string, payload any) SocketMessage {
@@ -59,29 +53,42 @@ var wsUpgrader = websocket.Upgrader{
 
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
-	receivedMsg := conn.WaitForMsg()
-	switch receivedMsg.Action {
-	case "create":
-		channel := Channel{}
-		if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
-			log.Printf("error while unmarshaling request for creating channel: %v", err)
-		}
-		if err := s.store.CreateChannel(channel.Name); err != nil {
-			conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
-		} else {
-			conn.WriteJSON(NewSocketMessage("channel_created", channel))
-		}
-	case "join":
-		channel := Channel{}
-		if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
-			log.Printf("error while unmarshaling request for creating channel: %v", err)
-		}
-		if err := s.store.JoinChannel(channel.Name, conn); err != nil {
-			conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
-		} else {
-			conn.WriteJSON(NewSocketMessage("channel_joined", channel))
-		}
+	for {
+		receivedMsg := conn.WaitForMsg()
+		switch receivedMsg.Action {
+		case "create":
+			channel := Channel{}
+			if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
+				log.Printf("error while unmarshaling request for creating channel: %v", err)
+			}
+			if err := s.store.CreateChannel(channel.Name); err != nil {
+				conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
+			} else {
+				conn.WriteJSON(NewSocketMessage("channel_created", channel))
+			}
+		case "join":
+			channel := Channel{}
+			if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
+				log.Printf("error while unmarshaling request for joining channel: %v", err)
+			}
+			if err := s.store.JoinChannel(channel.Name, conn); err != nil {
+				conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
+			} else {
+				conn.WriteJSON(NewSocketMessage("channel_joined", channel))
+			}
+		case "send_message":
+			message := MessageEvent{}
+			if err := json.Unmarshal(receivedMsg.Payload, &message); err != nil {
+				log.Printf("error while unmarshaling request for joining channel: %v", err)
+			}
+			channel := s.store.GetChannel(message.Channel)
+			if !slices.Contains(channel.Users, conn) {
+				conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": "you are not member of this channel"}))
+			} else {
+				conn.WriteJSON(NewSocketMessage("new_message", message))
+			}
 
+		}
 	}
 
 }
