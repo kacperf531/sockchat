@@ -28,10 +28,12 @@ func (store *StubChannelStore) CreateChannel(name string) error {
 	return nil
 }
 
-func (store *StubChannelStore) JoinChannel(channelName string) error {
-	if store.GetChannel(channelName) == nil {
+func (store *StubChannelStore) JoinChannel(channelName string, conn *SockChatWS) error {
+	channel := store.GetChannel(channelName)
+	if channel == nil {
 		return fmt.Errorf("channel `%s` does not exist", channelName)
 	}
+	channel.Users = append(channel.Users, conn)
 	return nil
 }
 
@@ -88,6 +90,10 @@ func TestSockChat(t *testing.T) {
 		want := "channel_joined"
 		if got != want {
 			t.Errorf("unexpected action returned from server")
+		}
+		channelUserCount := len(store.GetChannel(channelName).Users)
+		if channelUserCount != 1 {
+			t.Errorf("expected exactly 1 user connected to %s channel, got %d", channelName, channelUserCount)
 		}
 	})
 
