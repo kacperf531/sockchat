@@ -12,6 +12,7 @@ import (
 type ChannelStore interface {
 	GetChannel(name string) *Channel
 	CreateChannel(name string) error
+	JoinChannel(name string) error
 }
 
 type SockchatServer struct {
@@ -69,6 +70,16 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
 		} else {
 			conn.WriteJSON(NewSocketMessage("channel_created", channel))
+		}
+	case "join":
+		channel := Channel{}
+		if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
+			log.Printf("error while unmarshaling request for creating channel: %v", err)
+		}
+		if err := s.store.JoinChannel(channel.Name); err != nil {
+			conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
+		} else {
+			conn.WriteJSON(NewSocketMessage("channel_joined", channel))
 		}
 
 	}

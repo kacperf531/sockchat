@@ -28,54 +28,67 @@ func (store *StubChannelStore) CreateChannel(name string) error {
 	return nil
 }
 
+func (store *StubChannelStore) JoinChannel(channelName string) error {
+	if store.GetChannel(channelName) == nil {
+		return fmt.Errorf("channel `%s` does not exist", channelName)
+	}
+	return nil
+}
+
 func TestSockChat(t *testing.T) {
+	store := &StubChannelStore{map[string]*Channel{"Foo420": {}}}
+	server := httptest.NewServer(NewSockChatServer(store))
+
+	defer server.Close()
 
 	t.Run("create a chat channel", func(t *testing.T) {
+		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
+		defer ws.Close()
 
-		newChannel := Channel{Name: "Foo420"}
+		newChannel := Channel{Name: "Foo123"}
 		payloadBytes, _ := json.Marshal(newChannel)
 		request := SocketMessage{Action: "create", Payload: payloadBytes}
 
-		store := &StubChannelStore{make(map[string]*Channel)}
-		server := httptest.NewServer(NewSockChatServer(store))
-		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
-
-		defer server.Close()
-		defer ws.Close()
-
 		mustWriteWSMessage(t, ws, request)
-		receivedMessage := &SocketMessage{}
-		ws.ReadJSON(receivedMessage)
+		receivedMessage := mustReadWSMessage(t, ws)
 		got := receivedMessage.Action
 		want := "channel_created"
 		if got != "channel_created" {
 			t.Errorf("unexpected action returned from server, got %s, want %s", got, want)
 		}
 		AssertChannelExists(t, store, newChannel.Name)
-
 	})
 
 	t.Run("can not create channel with existing name", func(t *testing.T) {
+		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
+		defer ws.Close()
 
-		channelName := "Foo420"
-		newChannel := Channel{Name: channelName}
+		newChannel := Channel{Name: "Foo420"}
 		payloadBytes, _ := json.Marshal(newChannel)
 		request := SocketMessage{Action: "create", Payload: payloadBytes}
 
-		store := &StubChannelStore{map[string]*Channel{channelName: {}}}
-		server := httptest.NewServer(NewSockChatServer(store))
-		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
-
-		defer server.Close()
-		defer ws.Close()
-
 		mustWriteWSMessage(t, ws, request)
-		receivedMessage := &SocketMessage{}
-		ws.ReadJSON(receivedMessage)
-		if receivedMessage.Action != "invalid_request_received" {
+		got := mustReadWSMessage(t, ws).Action
+		want := "invalid_request_received"
+		if got != want {
 			t.Errorf("unexpected action returned from server")
 		}
+	})
 
+	t.Run("can join a channel", func(t *testing.T) {
+		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
+		defer ws.Close()
+
+		channelName := "Foo420"
+		payloadBytes, _ := json.Marshal(Channel{Name: channelName})
+		request := SocketMessage{Action: "join", Payload: payloadBytes}
+
+		mustWriteWSMessage(t, ws, request)
+		got := mustReadWSMessage(t, ws).Action
+		want := "channel_joined"
+		if got != want {
+			t.Errorf("unexpected action returned from server")
+		}
 	})
 
 }
@@ -99,6 +112,15 @@ func mustWriteWSMessage(t testing.TB, conn *websocket.Conn, message SocketMessag
 	if err := conn.WriteMessage(websocket.TextMessage, payloadBytes); err != nil {
 		t.Fatalf("could not send message over ws connection %v", err)
 	}
+}
+
+func mustReadWSMessage(t testing.TB, conn *websocket.Conn) SocketMessage {
+	t.Helper()
+	receivedMessage := &SocketMessage{}
+	if err := conn.ReadJSON(receivedMessage); err != nil {
+		t.Fatalf("could not parse message coming from ws %v", err)
+	}
+	return *receivedMessage
 }
 
 func AssertChannelExists(t *testing.T, store ChannelStore, channel string) {
