@@ -19,13 +19,23 @@ type SockchatServer struct {
 	http.Handler
 }
 
-type WSMsg struct {
+type SocketMessage struct {
 	Action  string          `json:"action"`
 	Payload json.RawMessage `json:"payload"`
 }
 
 type Channel struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	Users    []string
+	Messages []string
+}
+
+func NewSocketMessage(action string, payload any) SocketMessage {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Fatalf("error while marshaling payload %v", err)
+	}
+	return SocketMessage{Action: action, Payload: payloadBytes}
 }
 
 func NewSockChatServer(store ChannelStore) *SockchatServer {
@@ -56,8 +66,11 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			log.Printf("error while unmarshaling request for creating channel: %v", err)
 		}
 		if err := s.store.CreateChannel(channel.Name); err != nil {
-			log.Printf("could not create new channel due to error %v", err)
+			conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
+		} else {
+			conn.WriteJSON(NewSocketMessage("channel_created", channel))
 		}
+
 	}
 
 }
@@ -76,12 +89,12 @@ func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
 	return &SockChatWS{conn}
 }
 
-func (w *SockChatWS) WaitForMsg() WSMsg {
+func (w *SockChatWS) WaitForMsg() SocketMessage {
 	_, msgBytes, err := w.ReadMessage()
 	if err != nil {
 		log.Printf("error reading from websocket %v\n", err)
 	}
-	msg := WSMsg{}
+	msg := SocketMessage{}
 
 	json.Unmarshal(msgBytes, &msg)
 	return msg
