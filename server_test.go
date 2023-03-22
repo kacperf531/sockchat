@@ -12,16 +12,16 @@ import (
 
 // StubChannelStore implements ChannelStore for testing purposes
 type StubChannelStore struct {
-	Channels map[string]int
+	Channels map[string]*Channel
 }
 
-func (store *StubChannelStore) GetChannel(name string) int {
+func (store *StubChannelStore) GetChannel(name string) *Channel {
 	return store.Channels[name]
 }
 
-func (store *StubChannelStore) CreateChannel(name string) int {
-	store.Channels[name] = 1
-	return 1
+func (store *StubChannelStore) CreateChannel(name string) error {
+	store.Channels[name] = &Channel{}
+	return nil
 }
 
 func TestSockChat(t *testing.T) {
@@ -32,15 +32,15 @@ func TestSockChat(t *testing.T) {
 		payloadBytes, _ := json.Marshal(newChannel)
 		request := WSMsg{Action: "create", Payload: payloadBytes}
 
-		channels := &StubChannelStore{make(map[string]int)}
-		server := httptest.NewServer(NewSockChatServer(channels))
+		store := &StubChannelStore{make(map[string]*Channel)}
+		server := httptest.NewServer(NewSockChatServer(store))
 		ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
 
 		defer server.Close()
 		defer ws.Close()
 
 		mustWriteWSMessage(t, ws, request)
-		AssertChannelExists(t, channels, newChannel.Name)
+		AssertChannelExists(t, store, newChannel.Name)
 	})
 }
 
@@ -65,15 +65,14 @@ func mustWriteWSMessage(t testing.TB, conn *websocket.Conn, message WSMsg) {
 	}
 }
 
-func AssertChannelExists(t *testing.T, channels ChannelStore, soughtChannel string) {
+func AssertChannelExists(t *testing.T, store ChannelStore, channel string) {
 	t.Helper()
-
 	passed := retryUntil(100*time.Millisecond, func() bool {
-		return channels.GetChannel(soughtChannel) != 0
+		return store.GetChannel(channel) != nil
 	})
 
 	if !passed {
-		t.Errorf("expected channel ID other than 0")
+		t.Error("expected channel, got nil")
 	}
 }
 

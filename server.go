@@ -10,8 +10,8 @@ import (
 
 // ChannelStore stores information about channels
 type ChannelStore interface {
-	GetChannel(name string) int
-	CreateChannel(name string) int
+	GetChannel(name string) *Channel
+	CreateChannel(name string) error
 }
 
 type SockchatServer struct {
@@ -49,14 +49,15 @@ var wsUpgrader = websocket.Upgrader{
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
 	receivedMsg := conn.WaitForMsg()
-	log.Print(receivedMsg)
 	switch receivedMsg.Action {
 	case "create":
 		channel := Channel{}
 		if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
 			log.Printf("error while unmarshaling request for creating channel: %v", err)
 		}
-		s.store.CreateChannel(channel.Name)
+		if err := s.store.CreateChannel(channel.Name); err != nil {
+			log.Printf("could not create new channel due to error %v", err)
+		}
 	}
 
 }
