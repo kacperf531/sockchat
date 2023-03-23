@@ -2,6 +2,8 @@ package sockchat
 
 import (
 	"fmt"
+
+	"golang.org/x/exp/slices"
 )
 
 // FileSystemPlayerStore stores players in the filesystem.
@@ -33,6 +35,14 @@ func (store *SockChatStore) JoinChannel(channelName string, conn *SockChatWS) er
 	}
 	channel.Users = append(channel.Users, conn)
 	return nil
+}
+
+func (store *SockChatStore) ChannelHasUser(channelName string, conn *SockChatWS) bool {
+	channel, err := store.GetChannel(channelName)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(channel.Users, conn)
 }
 
 func NewSockChatStore() (*SockChatStore, error) {

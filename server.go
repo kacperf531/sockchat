@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"golang.org/x/exp/slices"
 )
 
 // ChannelStore stores information about channels
@@ -14,6 +13,7 @@ type ChannelStore interface {
 	GetChannel(name string) (*Channel, error)
 	CreateChannel(name string) error
 	JoinChannel(channelName string, conn *SockChatWS) error
+	ChannelHasUser(channelName string, conn *SockChatWS) bool
 }
 
 type SockchatServer struct {
@@ -83,13 +83,9 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		case "send_message":
 			message := MessageEvent{}
 			if err := json.Unmarshal(receivedMsg.Payload, &message); err != nil {
-				log.Printf("error while unmarshaling request for joining channel: %v", err)
+				log.Printf("error while unmarshaling request for sending message: %v", err)
 			}
-			channel, err := s.store.GetChannel(message.Channel)
-			if err != nil {
-				conn.WriteJSON(NewErrorMessage(err.Error()))
-			}
-			if !slices.Contains(channel.Users, conn) {
+			if !s.store.ChannelHasUser(message.Channel, conn) {
 				conn.WriteJSON(NewErrorMessage("you are not member of this channel"))
 			} else {
 				conn.WriteJSON(NewSocketMessage("new_message", message))

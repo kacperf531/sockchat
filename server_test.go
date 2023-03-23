@@ -45,6 +45,10 @@ func (store *StubChannelStore) JoinChannel(channelName string, conn *SockChatWS)
 	return nil
 }
 
+func (store *StubChannelStore) ChannelHasUser(channelName string, conn *SockChatWS) bool {
+	return channelName == ChannelWithUser
+}
+
 func TestSockChat(t *testing.T) {
 	store := &StubChannelStore{map[string]*Channel{}}
 	server := httptest.NewServer(NewSockChatServer(store))
@@ -97,9 +101,20 @@ func TestSockChat(t *testing.T) {
 		}
 	})
 
-	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
+	t.Run("can send a message to a channel being in", func(t *testing.T) {
+		request := NewSocketMessage("send_message", MessageEvent{"foo", ChannelWithUser})
+		mustWriteWSMessage(t, ws, request)
 
-		request := NewSocketMessage("send_message", map[string]string{"text": "foo", "channel": ChannelWithoutUser})
+		got := mustReadWSMessage(t, ws).Action
+		want := "new_message"
+		if got != want {
+			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
+		}
+
+	})
+
+	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
+		request := NewSocketMessage("send_message", MessageEvent{"foo", ChannelWithoutUser})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action

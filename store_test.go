@@ -6,7 +6,8 @@ import (
 
 func TestSockChatStore(t *testing.T) {
 
-	store := &SockChatStore{map[string]*Channel{"Foo420": {}}}
+	dummyUser := SockChatWS{}
+	store := &SockChatStore{map[string]*Channel{"Foo420": {Users: []*SockChatWS{&dummyUser}}}}
 
 	t.Run("can get an existing channel", func(t *testing.T) {
 		_, err := store.GetChannel("Foo420")
@@ -27,6 +28,22 @@ func TestSockChatStore(t *testing.T) {
 		err := store.CreateChannel("Foo420")
 		if err == nil {
 			t.Errorf("error should be returned but it was not")
+		}
+	})
+
+	t.Run("Return correct value of user presence", func(t *testing.T) {
+		got := store.ChannelHasUser("Foo420", &dummyUser)
+		want := true
+		if got != want {
+			t.Error("User should be present in requested channel")
+		}
+	})
+
+	t.Run("Return correct value of user presence for nonexistent channel", func(t *testing.T) {
+		got := store.ChannelHasUser("noexistent", &dummyUser)
+		want := false
+		if got != want {
+			t.Error("User should be present in requested channel")
 		}
 	})
 
