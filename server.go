@@ -58,10 +58,16 @@ var wsUpgrader = websocket.Upgrader{
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
 	for {
-		receivedMsg := conn.WaitForMsg()
+		receivedMsg, err := conn.WaitForMsg()
+		if err != nil {
+			log.Print("error occured when listening for ws messages, closing connection")
+			conn.Close()
+			break
+		}
+
 		switch receivedMsg.Action {
 		case "create":
-			channel := Channel{}
+			channel := CreateChannel{}
 			if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
 				log.Printf("error while unmarshaling request for creating channel: %v", err)
 			}
@@ -71,14 +77,14 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 				conn.WriteJSON(NewSocketMessage("channel_created", channel))
 			}
 		case "join":
-			channel := Channel{}
+			channel := JoinChannel{}
 			if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
 				log.Printf("error while unmarshaling request for joining channel: %v", err)
 			}
 			if err := s.store.JoinChannel(channel.Name, conn); err != nil {
 				conn.WriteJSON(NewErrorMessage(err.Error()))
 			} else {
-				conn.WriteJSON(NewSocketMessage("channel_joined", channel))
+				conn.WriteJSON(NewSocketMessage("channel_joined", ChannelJoined{ChannelName: channel.Name, UserName: conn.LocalAddr().String()}))
 			}
 		case "send_message":
 			message := MessageEvent{}
@@ -92,6 +98,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 		}
+
 	}
 
 }
@@ -110,13 +117,13 @@ func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
 	return &SockChatWS{conn}
 }
 
-func (w *SockChatWS) WaitForMsg() SocketMessage {
+func (w *SockChatWS) WaitForMsg() (*SocketMessage, error) {
 	_, msgBytes, err := w.ReadMessage()
 	if err != nil {
-		log.Printf("error reading from websocket %v\n", err)
+		return nil, err
 	}
-	msg := SocketMessage{}
+	msg := &SocketMessage{}
 
 	json.Unmarshal(msgBytes, &msg)
-	return msg
+	return msg, nil
 }
