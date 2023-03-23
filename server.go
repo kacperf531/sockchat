@@ -11,7 +11,7 @@ import (
 
 // ChannelStore stores information about channels
 type ChannelStore interface {
-	GetChannel(name string) *Channel
+	GetChannel(name string) (*Channel, error)
 	CreateChannel(name string) error
 	JoinChannel(channelName string, conn *SockChatWS) error
 }
@@ -31,6 +31,10 @@ func NewSocketMessage(action string, payload any) SocketMessage {
 		log.Fatalf("error while marshaling payload %v", err)
 	}
 	return SocketMessage{Action: action, Payload: payloadBytes}
+}
+
+func NewErrorMessage(details string) SocketMessage {
+	return NewSocketMessage("invalid_request_received", map[string]string{"details": details})
 }
 
 func NewSockChatServer(store ChannelStore) *SockchatServer {
@@ -62,7 +66,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 				log.Printf("error while unmarshaling request for creating channel: %v", err)
 			}
 			if err := s.store.CreateChannel(channel.Name); err != nil {
-				conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
+				conn.WriteJSON(NewErrorMessage(err.Error()))
 			} else {
 				conn.WriteJSON(NewSocketMessage("channel_created", channel))
 			}
@@ -72,7 +76,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 				log.Printf("error while unmarshaling request for joining channel: %v", err)
 			}
 			if err := s.store.JoinChannel(channel.Name, conn); err != nil {
-				conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": err.Error()}))
+				conn.WriteJSON(NewErrorMessage(err.Error()))
 			} else {
 				conn.WriteJSON(NewSocketMessage("channel_joined", channel))
 			}
@@ -81,9 +85,12 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			if err := json.Unmarshal(receivedMsg.Payload, &message); err != nil {
 				log.Printf("error while unmarshaling request for joining channel: %v", err)
 			}
-			channel := s.store.GetChannel(message.Channel)
+			channel, err := s.store.GetChannel(message.Channel)
+			if err != nil {
+				conn.WriteJSON(NewErrorMessage(err.Error()))
+			}
 			if !slices.Contains(channel.Users, conn) {
-				conn.WriteJSON(NewSocketMessage("invalid_request_received", map[string]string{"details": "you are not member of this channel"}))
+				conn.WriteJSON(NewErrorMessage("you are not member of this channel"))
 			} else {
 				conn.WriteJSON(NewSocketMessage("new_message", message))
 			}

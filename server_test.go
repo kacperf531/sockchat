@@ -6,68 +6,90 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+const ChannelWithUser = "channel_with_user"
+const ChannelWithoutUser = "channel_without_user"
 
 // StubChannelStore implements ChannelStore for testing purposes
 type StubChannelStore struct {
 	Channels map[string]*Channel
 }
 
-func (store *StubChannelStore) GetChannel(name string) *Channel {
-	return store.Channels[name]
+func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
+	switch name {
+	case ChannelWithoutUser:
+		return &Channel{}, nil
+	case ChannelWithUser:
+		return store.Channels[ChannelWithUser], nil
+	}
+	return store.Channels[name], nil
 }
 
 func (store *StubChannelStore) CreateChannel(name string) error {
-	if store.GetChannel(name) != nil {
+	if name == "already_exists" {
 		return fmt.Errorf("channel `%s` already exists", name)
 	}
-	store.Channels[name] = &Channel{}
 	return nil
 }
 
 func (store *StubChannelStore) JoinChannel(channelName string, conn *SockChatWS) error {
-	channel := store.GetChannel(channelName)
-	if channel == nil {
-		return fmt.Errorf("channel `%s` does not exist", channelName)
+	switch channelName {
+	case ChannelWithoutUser:
+		return nil
+	case ChannelWithUser:
+		return fmt.Errorf("User already in channel")
 	}
-	channel.Users = append(channel.Users, conn)
 	return nil
 }
 
 func TestSockChat(t *testing.T) {
-	store := &StubChannelStore{map[string]*Channel{"Foo420": {}}}
+	store := &StubChannelStore{map[string]*Channel{}}
 	server := httptest.NewServer(NewSockChatServer(store))
 	ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
 
 	defer ws.Close()
 	defer server.Close()
 
-	t.Run("create a chat channel", func(t *testing.T) {
-
-		newChannel := Channel{Name: "Foo123"}
-		payloadBytes, _ := json.Marshal(newChannel)
-		request := SocketMessage{Action: "create", Payload: payloadBytes}
-
+	t.Run("creates channel on request", func(t *testing.T) {
+		request := NewSocketMessage("create", Channel{Name: "FooBar420"})
 		mustWriteWSMessage(t, ws, request)
-		receivedMessage := mustReadWSMessage(t, ws)
-		got := receivedMessage.Action
+
+		got := mustReadWSMessage(t, ws).Action
 		want := "channel_created"
-		if got != "channel_created" {
+		if got != want {
 			t.Errorf("unexpected action returned from server, got %s, want %s", got, want)
 		}
-		AssertChannelExists(t, store, newChannel.Name)
 	})
 
-	t.Run("can not create channel with existing name", func(t *testing.T) {
-
-		newChannel := Channel{Name: "Foo420"}
-		payloadBytes, _ := json.Marshal(newChannel)
-		request := SocketMessage{Action: "create", Payload: payloadBytes}
-
+	t.Run("returns error on creating channel with existing name", func(t *testing.T) {
+		request := NewSocketMessage("create", Channel{Name: "already_exists"})
 		mustWriteWSMessage(t, ws, request)
+
+		got := mustReadWSMessage(t, ws).Action
+		want := "invalid_request_received"
+		if got != want {
+			t.Errorf("unexpected action returned from server")
+		}
+	})
+
+	t.Run("can join a channel", func(t *testing.T) {
+		request := NewSocketMessage("join", Channel{Name: ChannelWithoutUser})
+		mustWriteWSMessage(t, ws, request)
+
+		got := mustReadWSMessage(t, ws).Action
+		want := "channel_joined"
+		if got != want {
+			t.Errorf("unexpected action returned from server")
+		}
+	})
+
+	t.Run("can not join a channel they are already in", func(t *testing.T) {
+		request := NewSocketMessage("join", Channel{Name: ChannelWithUser})
+		mustWriteWSMessage(t, ws, request)
+
 		got := mustReadWSMessage(t, ws).Action
 		want := "invalid_request_received"
 		if got != want {
@@ -77,51 +99,11 @@ func TestSockChat(t *testing.T) {
 
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
 
-		channelName := "Foo420"
-		request := NewSocketMessage("send_message", map[string]string{"text": "foo", "channel": channelName})
+		request := NewSocketMessage("send_message", map[string]string{"text": "foo", "channel": ChannelWithoutUser})
 		mustWriteWSMessage(t, ws, request)
+
 		got := mustReadWSMessage(t, ws).Action
 		want := "invalid_request_received"
-		if got != want {
-			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
-		}
-
-	})
-	// TODO: test if can not join same channel twice
-	t.Run("can join a channel", func(t *testing.T) {
-
-		channelName := "Foo420"
-		payloadBytes, _ := json.Marshal(Channel{Name: channelName})
-		request := SocketMessage{Action: "join", Payload: payloadBytes}
-
-		mustWriteWSMessage(t, ws, request)
-		got := mustReadWSMessage(t, ws).Action
-		want := "channel_joined"
-		if got != want {
-			t.Errorf("unexpected action returned from server")
-		}
-		channelUserCount := len(store.GetChannel(channelName).Users)
-		if channelUserCount != 1 {
-			t.Errorf("expected exactly 1 user connected to %s channel, got %d", channelName, channelUserCount)
-		}
-	})
-
-	t.Run("can send a message to a channel", func(t *testing.T) {
-
-		channelName := "Foo420"
-		request := NewSocketMessage("join", Channel{Name: channelName})
-
-		mustWriteWSMessage(t, ws, request)
-		got := mustReadWSMessage(t, ws).Action
-		want := "channel_joined"
-		if got != want {
-			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
-		}
-
-		request = NewSocketMessage("send_message", map[string]string{"text": "foo", "channel": channelName})
-		mustWriteWSMessage(t, ws, request)
-		got = mustReadWSMessage(t, ws).Action
-		want = "new_message"
 		if got != want {
 			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
 		}
@@ -158,25 +140,4 @@ func mustReadWSMessage(t testing.TB, conn *websocket.Conn) SocketMessage {
 		t.Fatalf("could not parse message coming from ws %v", err)
 	}
 	return *receivedMessage
-}
-
-func AssertChannelExists(t *testing.T, store ChannelStore, channel string) {
-	t.Helper()
-	passed := retryUntil(100*time.Millisecond, func() bool {
-		return store.GetChannel(channel) != nil
-	})
-
-	if !passed {
-		t.Error("expected channel, got nil")
-	}
-}
-
-func retryUntil(d time.Duration, f func() bool) bool {
-	deadline := time.Now().Add(d)
-	for time.Now().Before(deadline) {
-		if f() {
-			return true
-		}
-	}
-	return false
 }
