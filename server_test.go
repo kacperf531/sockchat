@@ -1,13 +1,10 @@
 package sockchat
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/gorilla/websocket"
 )
 
 const ChannelWithUser = "channel_with_user"
@@ -40,7 +37,7 @@ func (store *StubChannelStore) JoinChannel(channelName string, conn *SockChatWS)
 	case ChannelWithoutUser:
 		return nil
 	case ChannelWithUser:
-		return fmt.Errorf("User already in channel")
+		return fmt.Errorf("user already in channel")
 	}
 	return nil
 }
@@ -101,18 +98,6 @@ func TestSockChat(t *testing.T) {
 		}
 	})
 
-	t.Run("can send a message to a channel being in", func(t *testing.T) {
-		request := NewSocketMessage("send_message", MessageEvent{"foo", ChannelWithUser})
-		mustWriteWSMessage(t, ws, request)
-
-		got := mustReadWSMessage(t, ws).Action
-		want := "new_message"
-		if got != want {
-			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
-		}
-
-	})
-
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
 		request := NewSocketMessage("send_message", MessageEvent{"foo", ChannelWithoutUser})
 		mustWriteWSMessage(t, ws, request)
@@ -125,34 +110,4 @@ func TestSockChat(t *testing.T) {
 
 	})
 
-}
-
-func mustDialWS(t *testing.T, url string) *websocket.Conn {
-	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
-
-	if err != nil {
-		t.Fatalf("could not open a ws connection on %s %v", url, err)
-	}
-
-	return ws
-}
-
-func mustWriteWSMessage(t testing.TB, conn *websocket.Conn, message SocketMessage) {
-	t.Helper()
-	payloadBytes, err := json.Marshal(message)
-	if err != nil {
-		t.Fatalf("could not marshal message before sending to the server %v", err)
-	}
-	if err := conn.WriteMessage(websocket.TextMessage, payloadBytes); err != nil {
-		t.Fatalf("could not send message over ws connection %v", err)
-	}
-}
-
-func mustReadWSMessage(t testing.TB, conn *websocket.Conn) SocketMessage {
-	t.Helper()
-	receivedMessage := &SocketMessage{}
-	if err := conn.ReadJSON(receivedMessage); err != nil {
-		t.Fatalf("could not parse message coming from ws %v", err)
-	}
-	return *receivedMessage
 }

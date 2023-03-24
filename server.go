@@ -94,12 +94,22 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			if !s.store.ChannelHasUser(message.Channel, conn) {
 				conn.WriteJSON(NewErrorMessage("you are not member of this channel"))
 			} else {
-				conn.WriteJSON(NewSocketMessage("new_message", message))
+				s.SendMessageToChannel(message.Channel, "new_message", message)
+
 			}
 
 		}
 
 	}
+
+}
+
+func (s *SockchatServer) SendMessageToChannel(channelName, action string, message any) error {
+	Channel, _ := s.store.GetChannel(channelName)
+	for _, conn := range Channel.Users {
+		conn.WriteJSON(NewSocketMessage(action, message))
+	}
+	return nil
 
 }
 
