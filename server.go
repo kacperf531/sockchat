@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -72,9 +73,9 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 				log.Printf("error while unmarshaling request for creating channel: %v", err)
 			}
 			if err := s.store.CreateChannel(channel.Name); err != nil {
-				conn.WriteJSON(NewErrorMessage(err.Error()))
+				conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 			} else {
-				conn.WriteJSON(NewSocketMessage("channel_created", channel))
+				conn.WriteSocketMsg(NewSocketMessage("channel_created", channel))
 			}
 		case "join":
 			channel := JoinChannel{}
@@ -82,9 +83,9 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 				log.Printf("error while unmarshaling request for joining channel: %v", err)
 			}
 			if err := s.store.JoinChannel(channel.Name, conn); err != nil {
-				conn.WriteJSON(NewErrorMessage(err.Error()))
+				conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 			} else {
-				conn.WriteJSON(NewSocketMessage("channel_joined", ChannelJoined{ChannelName: channel.Name, UserName: conn.LocalAddr().String()}))
+				conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelJoined{ChannelName: channel.Name, UserName: conn.LocalAddr().String()}))
 			}
 		case "send_message":
 			message := MessageEvent{}
@@ -92,12 +93,13 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 				log.Printf("error while unmarshaling request for sending message: %v", err)
 			}
 			if !s.store.ChannelHasUser(message.Channel, conn) {
-				conn.WriteJSON(NewErrorMessage("you are not member of this channel"))
+				conn.WriteSocketMsg(NewErrorMessage("you are not member of this channel"))
 			} else {
 				s.SendMessageToChannel(message.Channel, "new_message", message)
 
 			}
-
+		default:
+			conn.WriteSocketMsg(NewErrorMessage("action not supported"))
 		}
 
 	}
@@ -107,7 +109,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 func (s *SockchatServer) SendMessageToChannel(channelName, action string, message any) error {
 	Channel, _ := s.store.GetChannel(channelName)
 	for _, conn := range Channel.Users {
-		conn.WriteJSON(NewSocketMessage(action, message))
+		conn.WriteSocketMsg(NewSocketMessage(action, message))
 	}
 	return nil
 
@@ -115,6 +117,8 @@ func (s *SockchatServer) SendMessageToChannel(channelName, action string, messag
 
 type SockChatWS struct {
 	*websocket.Conn
+	writeLock sync.Mutex
+	readLock  sync.Mutex
 }
 
 func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
@@ -124,10 +128,12 @@ func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
 		log.Printf("problem upgrading connection to WebSockets %v\n", err)
 	}
 
-	return &SockChatWS{conn}
+	return &SockChatWS{Conn: conn}
 }
 
 func (w *SockChatWS) WaitForMsg() (*SocketMessage, error) {
+	w.readLock.Lock()
+	defer w.readLock.Unlock()
 	_, msgBytes, err := w.ReadMessage()
 	if err != nil {
 		return nil, err
@@ -136,4 +142,10 @@ func (w *SockChatWS) WaitForMsg() (*SocketMessage, error) {
 
 	json.Unmarshal(msgBytes, &msg)
 	return msg, nil
+}
+
+func (w *SockChatWS) WriteSocketMsg(m SocketMessage) error {
+	w.writeLock.Lock()
+	defer w.writeLock.Unlock()
+	return w.WriteJSON(m)
 }
