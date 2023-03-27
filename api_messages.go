@@ -9,6 +9,6 @@ type JoinChannel struct {
 }
 
 type ChannelJoined struct {
-	ChannelName string `json:"channel"`
-	UserName    string `json:"user"`
+	Name     string `json:"name"`
+	UserName string `json:"user"`
 }

@@ -22,10 +22,6 @@ type SockchatServer struct {
 	http.Handler
 }
 
-func (c *Channel) SendMessage(text string) {
-	c.Messages = append(c.Messages, text)
-}
-
 func NewSocketMessage(action string, payload any) SocketMessage {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -68,36 +64,11 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 
 		switch receivedMsg.Action {
 		case "create":
-			channel := CreateChannel{}
-			if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
-				log.Printf("error while unmarshaling request for creating channel: %v", err)
-			}
-			if err := s.store.CreateChannel(channel.Name); err != nil {
-				conn.WriteSocketMsg(NewErrorMessage(err.Error()))
-			} else {
-				conn.WriteSocketMsg(NewSocketMessage("channel_created", channel))
-			}
+			s.CreateNewChannel(*receivedMsg, conn)
 		case "join":
-			channel := JoinChannel{}
-			if err := json.Unmarshal(receivedMsg.Payload, &channel); err != nil {
-				log.Printf("error while unmarshaling request for joining channel: %v", err)
-			}
-			if err := s.store.JoinChannel(channel.Name, conn); err != nil {
-				conn.WriteSocketMsg(NewErrorMessage(err.Error()))
-			} else {
-				conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelJoined{ChannelName: channel.Name, UserName: conn.LocalAddr().String()}))
-			}
+			s.JoinChannel(*receivedMsg, conn)
 		case "send_message":
-			message := MessageEvent{}
-			if err := json.Unmarshal(receivedMsg.Payload, &message); err != nil {
-				log.Printf("error while unmarshaling request for sending message: %v", err)
-			}
-			if !s.store.ChannelHasUser(message.Channel, conn) {
-				conn.WriteSocketMsg(NewErrorMessage("you are not member of this channel"))
-			} else {
-				s.SendMessageToChannel(message.Channel, "new_message", message)
-
-			}
+			s.SendMessageToChannel(*receivedMsg, conn)
 		default:
 			conn.WriteSocketMsg(NewErrorMessage("action not supported"))
 		}
@@ -106,13 +77,46 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (s *SockchatServer) SendMessageToChannel(channelName, action string, message any) error {
-	Channel, _ := s.store.GetChannel(channelName)
-	for _, conn := range Channel.Users {
-		conn.WriteSocketMsg(NewSocketMessage(action, message))
-	}
-	return nil
+func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockChatWS) {
 
+	message := MessageEvent{}
+	if err := json.Unmarshal(request.Payload, &message); err != nil {
+		log.Printf("error while unmarshaling request for sending message: %v", err)
+		return
+	}
+	if !s.store.ChannelHasUser(message.Channel, conn) {
+		conn.WriteSocketMsg(NewErrorMessage("you are not member of this channel"))
+		return
+	}
+	channel, _ := s.store.GetChannel(message.Channel)
+	for _, conn := range channel.Users {
+		conn.WriteSocketMsg(NewSocketMessage("new_message", message))
+	}
+
+}
+
+func (s *SockchatServer) CreateNewChannel(request SocketMessage, conn *SockChatWS) {
+	channel := CreateChannel{}
+	if err := json.Unmarshal(request.Payload, &channel); err != nil {
+		log.Printf("error while unmarshaling request for creating channel: %v", err)
+	}
+	if err := s.store.CreateChannel(channel.Name); err != nil {
+		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
+	} else {
+		conn.WriteSocketMsg(NewSocketMessage("channel_created", channel))
+	}
+}
+
+func (s *SockchatServer) JoinChannel(request SocketMessage, conn *SockChatWS) {
+	channel := JoinChannel{}
+	if err := json.Unmarshal(request.Payload, &channel); err != nil {
+		log.Printf("error while unmarshaling request for joining channel: %v", err)
+	}
+	if err := s.store.JoinChannel(channel.Name, conn); err != nil {
+		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
+	} else {
+		conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelJoined{Name: channel.Name, UserName: conn.RemoteAddr().String()}))
+	}
 }
 
 type SockChatWS struct {
