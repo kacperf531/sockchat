@@ -175,6 +175,6 @@ func (w *SockChatWS) WriteSocketMsg(m SocketMessage) {
 	defer w.writeLock.Unlock()
 	err := w.WriteJSON(m)
 	if err != nil {
-		log.Printf("Error writing to websocket: %v", err)
+		log.Printf("Error writing message %s with payload %s to websocket: %v", m.Action, string(m.Payload), err)
 	}
 }
