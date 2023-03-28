@@ -143,7 +143,6 @@ func (s *SockchatServer) LeaveChannel(request SocketMessage, conn *SockChatWS) {
 type SockChatWS struct {
 	*websocket.Conn
 	writeLock sync.Mutex
-	readLock  sync.Mutex
 }
 
 func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
@@ -157,8 +156,6 @@ func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
 }
 
 func (w *SockChatWS) ReadMsg() ([]byte, error) {
-	w.readLock.Lock()
-	defer w.readLock.Unlock()
 	_, msgBytes, err := w.ReadMessage()
 	return msgBytes, err
 }
