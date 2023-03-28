@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-
-	"golang.org/x/exp/slices"
 )
 
 var ErrChannelDoesNotExist = errors.New("channel does not exist")
@@ -37,18 +35,29 @@ func (store *SockChatStore) CreateChannel(channelName string) error {
 	if store.Channels[channelName] != nil {
 		return fmt.Errorf("channel `%s` already exists", channelName)
 	}
-	store.Channels[channelName] = &Channel{}
+	store.Channels[channelName] = &Channel{Users: make(map[*SockChatWS]bool)}
 	return nil
 }
 
-func (store *SockChatStore) JoinChannel(channelName string, conn *SockChatWS) error {
+func (store *SockChatStore) AddUserToChannel(channelName string, conn *SockChatWS) error {
 	store.lock.Lock()
 	defer store.lock.Unlock()
 	channel := store.Channels[channelName]
 	if channel == nil {
 		return ErrChannelDoesNotExist
 	}
-	channel.Users = append(channel.Users, conn)
+	channel.Users[conn] = true
+	return nil
+}
+
+func (store *SockChatStore) RemoveUserFromChannel(channelName string, conn *SockChatWS) error {
+	store.lock.Lock()
+	defer store.lock.Unlock()
+	channel := store.Channels[channelName]
+	if channel == nil {
+		return ErrChannelDoesNotExist
+	}
+	delete(channel.Users, conn)
 	return nil
 }
 
@@ -59,5 +68,12 @@ func (store *SockChatStore) ChannelHasUser(channelName string, conn *SockChatWS)
 	if err != nil {
 		return false
 	}
-	return slices.Contains(channel.Users, conn)
+	return channel.Users[conn]
+}
+
+// Removes user from all channels
+func (store *SockChatStore) DisconnectUser(conn *SockChatWS) {
+	for channelName := range store.Channels {
+		store.RemoveUserFromChannel(channelName, conn)
+	}
 }

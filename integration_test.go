@@ -20,7 +20,7 @@ func TestIntegration(t *testing.T) {
 		conn := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
 		defer conn.Close()
 
-		mustWriteWSMessage(t, conn, NewSocketMessage("join", JoinChannel{"foo"}))
+		mustWriteWSMessage(t, conn, NewSocketMessage("join", ChannelRequest{"foo"}))
 		mustReadWSMessage(t, conn) // read the `channel_joined` from server
 
 		mustWriteWSMessage(t, conn, NewSocketMessage("send_message", MessageEvent{"hi!", "foo"}))
@@ -39,7 +39,7 @@ func TestIntegration(t *testing.T) {
 			mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")}
 		for _, conn := range conns {
 			go func(conn *websocket.Conn) {
-				mustWriteWSMessage(t, conn, NewSocketMessage("create_channel", CreateChannel{"foo"}))
+				mustWriteWSMessage(t, conn, NewSocketMessage("create", ChannelRequest{"foo"}))
 				conn.Close()
 			}(conn)
 		}

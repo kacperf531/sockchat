@@ -32,9 +32,9 @@ func TestSockChatStore(t *testing.T) {
 		}
 	})
 
-	t.Run("Return correct value of user presence", func(t *testing.T) {
+	t.Run("can add user to channel", func(t *testing.T) {
 		store.CreateChannel("Bar")
-		store.JoinChannel("Bar", &dummyUser)
+		store.AddUserToChannel("Bar", &dummyUser)
 
 		got := store.ChannelHasUser("Bar", &dummyUser)
 		want := true
@@ -43,11 +43,27 @@ func TestSockChatStore(t *testing.T) {
 		}
 	})
 
-	t.Run("Return correct value of user presence for nonexistent channel", func(t *testing.T) {
-		got := store.ChannelHasUser("noexistent", &dummyUser)
+	t.Run("can remove user from a channel", func(t *testing.T) {
+		store.CreateChannel("Baz")
+		store.AddUserToChannel("Baz", &dummyUser)
+		store.RemoveUserFromChannel("Baz", &dummyUser)
+
+		got := store.ChannelHasUser("Baz", &dummyUser)
 		want := false
 		if got != want {
-			t.Error("User should be present in requested channel")
+			t.Error("User should not be present in requested channel (they were removed)")
+		}
+	})
+
+	t.Run("Handle user's disconnection", func(t *testing.T) {
+		store.CreateChannel("Baz")
+		store.AddUserToChannel("Baz", &dummyUser)
+		store.DisconnectUser(&dummyUser)
+
+		got := store.ChannelHasUser("Bar", &dummyUser)
+		want := false
+		if got != want {
+			t.Error("User should not be present in requested channel (they were disconnected)")
 		}
 	})
 

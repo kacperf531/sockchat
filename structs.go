@@ -8,8 +8,7 @@ type SocketMessage struct {
 }
 
 type Channel struct {
-	Name  string `json:"name"`
-	Users []*SockChatWS
+	Users map[*SockChatWS]bool
 }
 
 type MessageEvent struct {

@@ -13,8 +13,10 @@ import (
 type ChannelStore interface {
 	GetChannel(name string) (*Channel, error)
 	CreateChannel(name string) error
-	JoinChannel(channelName string, conn *SockChatWS) error
+	AddUserToChannel(channelName string, conn *SockChatWS) error
+	RemoveUserFromChannel(channelName string, conn *SockChatWS) error
 	ChannelHasUser(channelName string, conn *SockChatWS) bool
+	DisconnectUser(conn *SockChatWS)
 }
 
 type SockchatServer struct {
@@ -36,12 +38,10 @@ func NewErrorMessage(details string) SocketMessage {
 
 func NewSockChatServer(store ChannelStore) *SockchatServer {
 	s := new(SockchatServer)
-
 	s.store = store
 
 	router := http.NewServeMux()
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
-
 	s.Handler = router
 
 	return s
@@ -54,11 +54,12 @@ var wsUpgrader = websocket.Upgrader{
 
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
+	defer s.ShutConnection(conn)
 	for {
 		receivedMsg, err := conn.WaitForMsg()
 		if err != nil {
-			log.Print("error occured when listening for ws messages, closing connection")
-			conn.Close()
+			log.Printf("error occured when listening for ws messages, closing connection %v", err)
+			s.ShutConnection(conn)
 			break
 		}
 
@@ -67,9 +68,12 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			s.CreateNewChannel(*receivedMsg, conn)
 		case "join":
 			s.JoinChannel(*receivedMsg, conn)
+		case "leave":
+			s.LeaveChannel(*receivedMsg, conn)
 		case "send_message":
 			s.SendMessageToChannel(*receivedMsg, conn)
 		default:
+			log.Printf("Unexpected request received: %s", receivedMsg.Action)
 			conn.WriteSocketMsg(NewErrorMessage("action not supported"))
 		}
 
@@ -77,8 +81,12 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockChatWS) {
+func (s *SockchatServer) ShutConnection(conn *SockChatWS) {
+	conn.Close()
+	s.store.DisconnectUser(conn)
+}
 
+func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockChatWS) {
 	message := MessageEvent{}
 	if err := json.Unmarshal(request.Payload, &message); err != nil {
 		log.Printf("error while unmarshaling request for sending message: %v", err)
@@ -89,17 +97,14 @@ func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockC
 		return
 	}
 	channel, _ := s.store.GetChannel(message.Channel)
-	for _, conn := range channel.Users {
+	for conn := range channel.Users {
 		conn.WriteSocketMsg(NewSocketMessage("new_message", message))
 	}
 
 }
 
 func (s *SockchatServer) CreateNewChannel(request SocketMessage, conn *SockChatWS) {
-	channel := CreateChannel{}
-	if err := json.Unmarshal(request.Payload, &channel); err != nil {
-		log.Printf("error while unmarshaling request for creating channel: %v", err)
-	}
+	channel := UnmarshalChannelRequest(request.Payload)
 	if err := s.store.CreateChannel(channel.Name); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 	} else {
@@ -108,14 +113,23 @@ func (s *SockchatServer) CreateNewChannel(request SocketMessage, conn *SockChatW
 }
 
 func (s *SockchatServer) JoinChannel(request SocketMessage, conn *SockChatWS) {
-	channel := JoinChannel{}
-	if err := json.Unmarshal(request.Payload, &channel); err != nil {
-		log.Printf("error while unmarshaling request for joining channel: %v", err)
-	}
-	if err := s.store.JoinChannel(channel.Name, conn); err != nil {
+	channel := UnmarshalChannelRequest(request.Payload)
+	if err := s.store.AddUserToChannel(channel.Name, conn); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 	} else {
-		conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelJoined{Name: channel.Name, UserName: conn.RemoteAddr().String()}))
+		conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelUserChangeEvent{Name: channel.Name, UserName: conn.RemoteAddr().String()}))
+	}
+}
+
+func (s *SockchatServer) LeaveChannel(request SocketMessage, conn *SockChatWS) {
+	channel := ChannelRequest{}
+	if err := json.Unmarshal(request.Payload, &channel); err != nil {
+		log.Printf("error while unmarshaling request for leaving channel: %v", err)
+	}
+	if err := s.store.RemoveUserFromChannel(channel.Name, conn); err != nil {
+		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
+	} else {
+		conn.WriteSocketMsg(NewSocketMessage("channel_left", ChannelUserChangeEvent{Name: channel.Name, UserName: conn.RemoteAddr().String()}))
 	}
 }
 
