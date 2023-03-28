@@ -104,8 +104,8 @@ func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockC
 		return
 	}
 	channel, _ := s.store.GetChannel(message.Channel)
-	for conn := range channel.Users {
-		conn.WriteSocketMsg(NewSocketMessage("new_message", message))
+	for user := range channel.Users {
+		user.WriteSocketMsg(NewSocketMessage("new_message", message))
 	}
 
 }
