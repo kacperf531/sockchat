@@ -7,8 +7,10 @@ import (
 	"testing"
 )
 
-const ChannelWithUser = "channel_with_user"
-const ChannelWithoutUser = "channel_without_user"
+const (
+	ChannelWithUser    = "channel_with_user"
+	ChannelWithoutUser = "channel_without_user"
+)
 
 // StubChannelStore implements ChannelStore for testing purposes
 type StubChannelStore struct {
@@ -50,7 +52,7 @@ func TestSockChat(t *testing.T) {
 	defer server.Close()
 
 	t.Run("creates channel on request", func(t *testing.T) {
-		request := NewSocketMessage("create", ChannelRequest{Name: "FooBar420"})
+		request := NewSocketMessage(CreateAction, ChannelRequest{Name: "FooBar420"})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action
@@ -59,7 +61,7 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("returns error on creating channel with existing name", func(t *testing.T) {
-		request := NewSocketMessage("create", ChannelRequest{Name: "already_exists"})
+		request := NewSocketMessage(CreateAction, ChannelRequest{Name: "already_exists"})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action
@@ -68,7 +70,7 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("can join a channel", func(t *testing.T) {
-		request := NewSocketMessage("join", ChannelRequest{Name: ChannelWithoutUser})
+		request := NewSocketMessage(JoinAction, ChannelRequest{Name: ChannelWithoutUser})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action
@@ -77,7 +79,7 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("can leave a channel", func(t *testing.T) {
-		request := NewSocketMessage("leave", ChannelRequest{Name: ChannelWithUser})
+		request := NewSocketMessage(LeaveAction, ChannelRequest{Name: ChannelWithUser})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action
@@ -86,7 +88,7 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("error if leaving a channel user are not in", func(t *testing.T) {
-		request := NewSocketMessage("leave", ChannelRequest{Name: ChannelWithoutUser})
+		request := NewSocketMessage(LeaveAction, ChannelRequest{Name: ChannelWithoutUser})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action
@@ -95,7 +97,7 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("can not join a channel they are already in", func(t *testing.T) {
-		request := NewSocketMessage("join", ChannelRequest{Name: ChannelWithUser})
+		request := NewSocketMessage(JoinAction, ChannelRequest{Name: ChannelWithUser})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action
@@ -104,7 +106,7 @@ func TestSockChat(t *testing.T) {
 	})
 
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
-		request := NewSocketMessage("send_message", MessageEvent{"foo", ChannelWithoutUser})
+		request := NewSocketMessage(SendMessageAction, MessageEvent{"foo", ChannelWithoutUser})
 		mustWriteWSMessage(t, ws, request)
 
 		got := mustReadWSMessage(t, ws).Action

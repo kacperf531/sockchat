@@ -2,7 +2,6 @@ package sockchat
 
 import (
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gorilla/websocket"
@@ -17,13 +16,13 @@ func TestIntegration(t *testing.T) {
 	defer server.Close()
 
 	t.Run("user can send a message to a channel they have joined", func(t *testing.T) {
-		conn := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
+		conn := mustDialWS(t, GetWsURL(server.URL))
 		defer conn.Close()
 
-		mustWriteWSMessage(t, conn, NewSocketMessage("join", ChannelRequest{"foo"}))
+		mustWriteWSMessage(t, conn, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))
 		mustReadWSMessage(t, conn) // read the `channel_joined` from server
 
-		mustWriteWSMessage(t, conn, NewSocketMessage("send_message", MessageEvent{"hi!", "foo"}))
+		mustWriteWSMessage(t, conn, NewSocketMessage(SendMessageAction, MessageEvent{"hi!", "foo"}))
 
 		got := mustReadWSMessage(t, conn).Action
 		want := "new_message"
@@ -35,11 +34,11 @@ func TestIntegration(t *testing.T) {
 
 	t.Run("two users create the channel at the same time", func(t *testing.T) {
 		conns := []*websocket.Conn{
-			mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws"),
-			mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")}
+			mustDialWS(t, GetWsURL(server.URL)),
+			mustDialWS(t, GetWsURL(server.URL))}
 		for _, conn := range conns {
 			go func(conn *websocket.Conn) {
-				mustWriteWSMessage(t, conn, NewSocketMessage("create", ChannelRequest{"foo"}))
+				mustWriteWSMessage(t, conn, NewSocketMessage(CreateAction, ChannelRequest{"foo"}))
 				conn.Close()
 			}(conn)
 		}

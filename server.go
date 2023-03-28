@@ -9,6 +9,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	JoinAction        = "join"
+	CreateAction      = "create"
+	LeaveAction       = "leave"
+	SendMessageAction = "send_message"
+)
+
 // ChannelStore stores information about channels
 type ChannelStore interface {
 	GetChannel(name string) (*Channel, error)
@@ -56,7 +63,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
 	defer s.ShutConnection(conn)
 	for {
-		receivedMsg, err := conn.WaitForMsg()
+		receivedMsg, err := conn.ReadSocketMsg()
 		if err != nil {
 			log.Printf("error occured when listening for ws messages, closing connection %v", err)
 			s.ShutConnection(conn)
@@ -64,13 +71,13 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch receivedMsg.Action {
-		case "create":
+		case CreateAction:
 			s.CreateNewChannel(*receivedMsg, conn)
-		case "join":
+		case JoinAction:
 			s.JoinChannel(*receivedMsg, conn)
-		case "leave":
+		case LeaveAction:
 			s.LeaveChannel(*receivedMsg, conn)
-		case "send_message":
+		case SendMessageAction:
 			s.SendMessageToChannel(*receivedMsg, conn)
 		default:
 			log.Printf("Unexpected request received: %s", receivedMsg.Action)
@@ -149,21 +156,25 @@ func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
 	return &SockChatWS{Conn: conn}
 }
 
-func (w *SockChatWS) WaitForMsg() (*SocketMessage, error) {
+func (w *SockChatWS) ReadMsg() ([]byte, error) {
 	w.readLock.Lock()
 	defer w.readLock.Unlock()
 	_, msgBytes, err := w.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-	msg := &SocketMessage{}
-
-	json.Unmarshal(msgBytes, &msg)
-	return msg, nil
+	return msgBytes, err
 }
 
-func (w *SockChatWS) WriteSocketMsg(m SocketMessage) error {
+func (w *SockChatWS) ReadSocketMsg() (*SocketMessage, error) {
+	msgBytes, err := w.ReadMsg()
+	msg := &SocketMessage{}
+	json.Unmarshal(msgBytes, &msg)
+	return msg, err
+}
+
+func (w *SockChatWS) WriteSocketMsg(m SocketMessage) {
 	w.writeLock.Lock()
 	defer w.writeLock.Unlock()
-	return w.WriteJSON(m)
+	err := w.WriteJSON(m)
+	if err != nil {
+		log.Printf("Error writing to websocket: %v", err)
+	}
 }

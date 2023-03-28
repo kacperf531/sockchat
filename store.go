@@ -19,30 +19,30 @@ func NewSockChatStore() (*SockChatStore, error) {
 	return &SockChatStore{Channels: map[string]*Channel{}}, nil
 }
 
-func (store *SockChatStore) GetChannel(name string) (*Channel, error) {
-	store.lock.RLock()
-	defer store.lock.RUnlock()
-	channel := store.Channels[name]
+func (s *SockChatStore) GetChannel(name string) (*Channel, error) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	channel := s.Channels[name]
 	if channel == nil {
 		return nil, ErrChannelDoesNotExist
 	}
 	return channel, nil
 }
 
-func (store *SockChatStore) CreateChannel(channelName string) error {
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	if store.Channels[channelName] != nil {
+func (s *SockChatStore) CreateChannel(channelName string) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.Channels[channelName] != nil {
 		return fmt.Errorf("channel `%s` already exists", channelName)
 	}
-	store.Channels[channelName] = &Channel{Users: make(map[*SockChatWS]bool)}
+	s.Channels[channelName] = &Channel{Users: make(map[*SockChatWS]bool)}
 	return nil
 }
 
-func (store *SockChatStore) AddUserToChannel(channelName string, conn *SockChatWS) error {
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	channel := store.Channels[channelName]
+func (s *SockChatStore) AddUserToChannel(channelName string, conn *SockChatWS) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	channel := s.Channels[channelName]
 	if channel == nil {
 		return ErrChannelDoesNotExist
 	}
@@ -50,10 +50,10 @@ func (store *SockChatStore) AddUserToChannel(channelName string, conn *SockChatW
 	return nil
 }
 
-func (store *SockChatStore) RemoveUserFromChannel(channelName string, conn *SockChatWS) error {
-	store.lock.Lock()
-	defer store.lock.Unlock()
-	channel := store.Channels[channelName]
+func (s *SockChatStore) RemoveUserFromChannel(channelName string, conn *SockChatWS) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	channel := s.Channels[channelName]
 	if channel == nil {
 		return ErrChannelDoesNotExist
 	}
@@ -61,10 +61,10 @@ func (store *SockChatStore) RemoveUserFromChannel(channelName string, conn *Sock
 	return nil
 }
 
-func (store *SockChatStore) ChannelHasUser(channelName string, conn *SockChatWS) bool {
-	store.lock.RLock()
-	defer store.lock.RUnlock()
-	channel, err := store.GetChannel(channelName)
+func (s *SockChatStore) ChannelHasUser(channelName string, conn *SockChatWS) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	channel, err := s.GetChannel(channelName)
 	if err != nil {
 		return false
 	}
@@ -72,8 +72,8 @@ func (store *SockChatStore) ChannelHasUser(channelName string, conn *SockChatWS)
 }
 
 // Removes user from all channels
-func (store *SockChatStore) DisconnectUser(conn *SockChatWS) {
-	for channelName := range store.Channels {
-		store.RemoveUserFromChannel(channelName, conn)
+func (s *SockChatStore) DisconnectUser(conn *SockChatWS) {
+	for channelName := range s.Channels {
+		s.RemoveUserFromChannel(channelName, conn)
 	}
 }

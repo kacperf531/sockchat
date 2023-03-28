@@ -2,6 +2,7 @@ package sockchat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/websocket"
@@ -35,4 +36,8 @@ func mustReadWSMessage(t testing.TB, conn *websocket.Conn) SocketMessage {
 		t.Fatalf("could not parse message coming from ws %v", err)
 	}
 	return *receivedMessage
+}
+
+func GetWsURL(serverURL string) string {
+	return "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
 }
