@@ -1,10 +1,15 @@
 package sockchat
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -43,9 +48,10 @@ func (store *StubChannelStore) ChannelHasUser(channelName string, conn *SockChat
 	return channelName == ChannelWithUser
 }
 
-func TestSockChat(t *testing.T) {
+func TestSockChatWS(t *testing.T) {
 	store := &StubChannelStore{Channels: map[string]*Channel{}}
-	server := httptest.NewServer(NewSockChatServer(store))
+	users := userStoreSpy{}
+	server := httptest.NewServer(NewSockChatServer(store, &users))
 	ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
 
 	defer ws.Close()
@@ -122,4 +128,39 @@ func AssertResponseAction(t *testing.T, got, want string) {
 	if got != want {
 		t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
 	}
+}
+
+func TestSockChatHTTP(t *testing.T) {
+	store := &StubChannelStore{Channels: map[string]*Channel{}}
+	users := userStoreSpy{}
+	server := NewSockChatServer(store, &users)
+
+	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
+		request := newRegisterRequest(NewUser{Nick: "Foo", Password: "Bar420"})
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		assert.Equal(t, http.StatusCreated, response.Code)
+	})
+
+	t.Run("can not register a new user with missing required data", func(t *testing.T) {
+		missingDataTests := []NewUser{{Nick: "Foo"},
+			{Password: "Bar42"}}
+		for _, tt := range missingDataTests {
+			request := newRegisterRequest(tt)
+			response := httptest.NewRecorder()
+
+			server.ServeHTTP(response, request)
+
+			assert.Equal(t, http.StatusUnprocessableEntity, response.Code)
+		}
+
+	})
+}
+
+func newRegisterRequest(b NewUser) *http.Request {
+	requestBytes, _ := json.Marshal(b)
+	req, _ := http.NewRequest(http.MethodGet, "/register", bytes.NewBuffer(requestBytes))
+	return req
 }

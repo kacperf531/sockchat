@@ -1,12 +1,15 @@
 package sockchat
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/kacperf531/sockchat/storage"
 )
 
 const (
@@ -29,6 +32,7 @@ type ChannelStore interface {
 type SockchatServer struct {
 	store ChannelStore
 	http.Handler
+	userService UserService
 }
 
 func NewSocketMessage(action string, payload any) SocketMessage {
@@ -43,12 +47,14 @@ func NewErrorMessage(details string) SocketMessage {
 	return NewSocketMessage("invalid_request_received", map[string]string{"details": details})
 }
 
-func NewSockChatServer(store ChannelStore) *SockchatServer {
+func NewSockChatServer(store ChannelStore, userStore storage.UserStore) *SockchatServer {
 	s := new(SockchatServer)
 	s.store = store
+	s.userService = UserService{store: userStore}
 
 	router := http.NewServeMux()
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
+	router.Handle("/register", http.HandlerFunc(s.register))
 	s.Handler = router
 
 	return s
@@ -61,39 +67,60 @@ var wsUpgrader = websocket.Upgrader{
 
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
-	defer s.ShutConnection(conn)
+	defer s.shutConnection(conn)
 	for {
 		receivedMsg, err := conn.ReadSocketMsg()
 		if err != nil {
 			log.Printf("error occured when listening for ws messages, closing connection %v", err)
-			s.ShutConnection(conn)
+			s.shutConnection(conn)
 			break
 		}
 
 		switch receivedMsg.Action {
 		case CreateAction:
-			s.CreateNewChannel(*receivedMsg, conn)
+			s.createNewChannel(*receivedMsg, conn)
 		case JoinAction:
-			s.JoinChannel(*receivedMsg, conn)
+			s.joinChannel(*receivedMsg, conn)
 		case LeaveAction:
-			s.LeaveChannel(*receivedMsg, conn)
+			s.leaveChannel(*receivedMsg, conn)
 		case SendMessageAction:
-			s.SendMessageToChannel(*receivedMsg, conn)
+			s.sendMessageToChannel(*receivedMsg, conn)
 		default:
 			log.Printf("Unexpected request received: %s", receivedMsg.Action)
 			conn.WriteSocketMsg(NewErrorMessage("action not supported"))
 		}
 
 	}
+}
+
+func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
+	userData := NewUser{}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("error reading register request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err = json.Unmarshal(bodyBytes, &userData)
+	if err != nil {
+		log.Printf("error unmarshaling register request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err = s.userService.CreateUser(context.TODO(), &userData)
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}
+	w.WriteHeader(http.StatusCreated)
 
 }
 
-func (s *SockchatServer) ShutConnection(conn *SockChatWS) {
+func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 	conn.Close()
 	s.store.DisconnectUser(conn)
 }
 
-func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockChatWS) {
+func (s *SockchatServer) sendMessageToChannel(request SocketMessage, conn *SockChatWS) {
 	message := MessageEvent{}
 	if err := json.Unmarshal(request.Payload, &message); err != nil {
 		log.Printf("error while unmarshaling request for sending message: %v", err)
@@ -110,7 +137,7 @@ func (s *SockchatServer) SendMessageToChannel(request SocketMessage, conn *SockC
 
 }
 
-func (s *SockchatServer) CreateNewChannel(request SocketMessage, conn *SockChatWS) {
+func (s *SockchatServer) createNewChannel(request SocketMessage, conn *SockChatWS) {
 	channel := UnmarshalChannelRequest(request.Payload)
 	if err := s.store.CreateChannel(channel.Name); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
@@ -119,7 +146,7 @@ func (s *SockchatServer) CreateNewChannel(request SocketMessage, conn *SockChatW
 	}
 }
 
-func (s *SockchatServer) JoinChannel(request SocketMessage, conn *SockChatWS) {
+func (s *SockchatServer) joinChannel(request SocketMessage, conn *SockChatWS) {
 	channel := UnmarshalChannelRequest(request.Payload)
 	if err := s.store.AddUserToChannel(channel.Name, conn); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
@@ -128,7 +155,7 @@ func (s *SockchatServer) JoinChannel(request SocketMessage, conn *SockChatWS) {
 	}
 }
 
-func (s *SockchatServer) LeaveChannel(request SocketMessage, conn *SockChatWS) {
+func (s *SockchatServer) leaveChannel(request SocketMessage, conn *SockChatWS) {
 	channel := ChannelRequest{}
 	if err := json.Unmarshal(request.Payload, &channel); err != nil {
 		log.Printf("error while unmarshaling request for leaving channel: %v", err)
