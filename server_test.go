@@ -50,7 +50,7 @@ func (store *StubChannelStore) ChannelHasUser(channelName string, conn *SockChat
 
 func TestSockChatWS(t *testing.T) {
 	store := &StubChannelStore{Channels: map[string]*Channel{}}
-	users := userStoreSpy{}
+	users := userStoreDouble{}
 	server := httptest.NewServer(NewSockChatServer(store, &users))
 	ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
 
@@ -132,7 +132,7 @@ func AssertResponseAction(t *testing.T, got, want string) {
 
 func TestSockChatHTTP(t *testing.T) {
 	store := &StubChannelStore{Channels: map[string]*Channel{}}
-	users := userStoreSpy{}
+	users := userStoreDouble{}
 	server := NewSockChatServer(store, &users)
 
 	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
@@ -159,8 +159,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
-		// TODO: authorization
-		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "69"})
+		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "D3scription", Password: "foo420"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)

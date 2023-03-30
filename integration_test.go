@@ -11,7 +11,7 @@ func TestIntegration(t *testing.T) {
 	store, _ := NewSockChatStore()
 	store.CreateChannel("foo")
 	store.CreateChannel("bar")
-	users := userStoreSpy{}
+	users := userStoreDouble{}
 	server := httptest.NewServer(NewSockChatServer(store, &users))
 
 	defer server.Close()

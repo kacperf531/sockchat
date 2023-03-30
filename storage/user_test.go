@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,22 +18,33 @@ func TestUserStore(t *testing.T) {
 	defer db.Close()
 
 	store := NewUserStore(db)
+	var userExists bool
 
 	t.Run("inserts new user into DB", func(t *testing.T) {
-		err := store.InsertUser(context.TODO(), &User{
-			Nick:        "Foo",
-			PwHash:      "Bar",
-			Description: "desc",
-		})
-		require.NoError(t, err)
+		createUserFoo(t, store)
+		userExists = true
 	})
 
 	t.Run("updates existing user's info in DB", func(t *testing.T) {
+		if !userExists {
+			createUserFoo(t, store)
+			userExists = true
+		}
 		err := store.UpdateUser(context.TODO(), &User{
 			Nick:        "Foo",
 			Description: "Baz",
 		})
 		require.NoError(t, err)
+	})
+
+	t.Run("returns existing user's info in DB", func(t *testing.T) {
+		if !userExists {
+			createUserFoo(t, store)
+			userExists = true
+		}
+		user, err := store.SelectUser(context.TODO(), "Foo")
+		require.NoError(t, err)
+		assert.Equal(t, "Foo", user.Nick)
 	})
 
 }
@@ -54,4 +66,17 @@ func mustSetUpTestDB(t *testing.T) *sql.DB {
 		t.Errorf("error setting up the table %v", err)
 	}
 	return db
+}
+
+func createUserFoo(t *testing.T, store UserStore) *User {
+	t.Helper()
+	newUser := &User{
+		Nick:        "Foo",
+		PwHash:      "Bar",
+		Description: "desc"}
+	err := store.InsertUser(context.TODO(), newUser)
+	if err != nil {
+		t.Errorf("could not insert new user due to an error %v", err)
+	}
+	return newUser
 }

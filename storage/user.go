@@ -11,6 +11,7 @@ import (
 type UserStore interface {
 	InsertUser(context.Context, *User) error
 	UpdateUser(context.Context, *User) error
+	SelectUser(context.Context, string) (*User, error)
 }
 
 func NewUserStore(db *sql.DB) UserStore {
@@ -49,7 +50,7 @@ func (s *userStore) UpdateUser(ctx context.Context, u *User) error {
 
 	res, err := s.db.ExecContext(ctx, stmt, u.Description, u.Nick)
 	if err != nil {
-		return fmt.Errorf("could not insert row: %w", err)
+		return fmt.Errorf("could not update row: %w", err)
 	}
 
 	if _, err := res.RowsAffected(); err != nil {
@@ -57,4 +58,13 @@ func (s *userStore) UpdateUser(ctx context.Context, u *User) error {
 	}
 
 	return nil
+}
+
+func (s *userStore) SelectUser(ctx context.Context, nick string) (*User, error) {
+	var user User
+	if err := s.db.QueryRow("SELECT * FROM users WHERE nick = ?;", nick).Scan(&user.Nick, &user.PwHash, &user.Description); err != nil {
+		return nil, fmt.Errorf("could not get row: %w", err)
+	}
+
+	return &user, nil
 }

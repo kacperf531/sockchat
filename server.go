@@ -130,7 +130,7 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// TODO: Check authorization first
+	// TODO: Handle authorization errors separately
 	err = s.userService.EditUser(context.TODO(), &userData)
 	if err != nil {
 		w.WriteHeader(http.StatusUnprocessableEntity)
