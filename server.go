@@ -55,6 +55,7 @@ func NewSockChatServer(store ChannelStore, userStore storage.UserStore) *Sockcha
 	router := http.NewServeMux()
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
 	router.Handle("/register", http.HandlerFunc(s.register))
+	router.Handle("/edit_profile", http.HandlerFunc(s.editProfile))
 	s.Handler = router
 
 	return s
@@ -94,7 +95,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
-	userData := NewUser{}
+	userData := UserRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("error reading register request: %v", err)
@@ -112,6 +113,29 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	}
 	w.WriteHeader(http.StatusCreated)
+
+}
+
+func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
+	userData := UserRequest{}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("error reading register request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err = json.Unmarshal(bodyBytes, &userData)
+	if err != nil {
+		log.Printf("error unmarshaling register request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	// TODO: Check authorization first
+	err = s.userService.EditUser(context.TODO(), &userData)
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}
+	w.WriteHeader(http.StatusOK)
 
 }
 

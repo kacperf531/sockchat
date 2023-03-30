@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInsertUser(t *testing.T) {
+func TestUserStore(t *testing.T) {
 	godotenv.Load("../.env")
 
 	db := mustSetUpTestDB(t)
@@ -20,9 +20,17 @@ func TestInsertUser(t *testing.T) {
 
 	t.Run("inserts new user into DB", func(t *testing.T) {
 		err := store.InsertUser(context.TODO(), &User{
-			Nick:   "Foo",
-			PwHash: "Bar",
-			Salt:   "Baz",
+			Nick:        "Foo",
+			PwHash:      "Bar",
+			Description: "desc",
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("updates existing user's info in DB", func(t *testing.T) {
+		err := store.UpdateUser(context.TODO(), &User{
+			Nick:        "Foo",
+			Description: "Baz",
 		})
 		require.NoError(t, err)
 	})
@@ -38,9 +46,9 @@ func mustSetUpTestDB(t *testing.T) *sql.DB {
 
 	db.Exec("DROP TABLE IF EXISTS users;")
 	_, err = db.Exec(`CREATE TABLE users (
-		Nick      VARCHAR(255) NOT NULL,
-		PwHash     VARCHAR(255) NOT NULL,
-		Salt      VARCHAR(255) NOT NULL
+		nick      VARCHAR(255) NOT NULL,
+		pw_hash     VARCHAR(255) NOT NULL,
+		description      VARCHAR(255) NOT NULL
 	  );`)
 	if err != nil {
 		t.Errorf("error setting up the table %v", err)

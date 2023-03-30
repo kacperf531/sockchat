@@ -15,3 +15,9 @@ type MessageEvent struct {
 	Text    string `json:"text"`
 	Channel string `json:"channel"`
 }
+
+type UserRequest struct {
+	Nick        string `json:"nick"`
+	Password    string `json:"password"`
+	Description string `json:"description"`
+}

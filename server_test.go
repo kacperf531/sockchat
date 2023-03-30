@@ -136,7 +136,7 @@ func TestSockChatHTTP(t *testing.T) {
 	server := NewSockChatServer(store, &users)
 
 	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
-		request := newRegisterRequest(NewUser{Nick: "Foo", Password: "Bar420"})
+		request := newRegisterRequest(UserRequest{Nick: "Foo", Password: "Bar420"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -145,7 +145,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can not register a new user with missing required data", func(t *testing.T) {
-		missingDataTests := []NewUser{{Nick: "Foo"},
+		missingDataTests := []UserRequest{{Nick: "Foo"},
 			{Password: "Bar42"}}
 		for _, tt := range missingDataTests {
 			request := newRegisterRequest(tt)
@@ -157,10 +157,26 @@ func TestSockChatHTTP(t *testing.T) {
 		}
 
 	})
+
+	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
+		// TODO: authorization
+		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "69"})
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		assert.Equal(t, http.StatusOK, response.Code)
+	})
 }
 
-func newRegisterRequest(b NewUser) *http.Request {
+func newRegisterRequest(b UserRequest) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodGet, "/register", bytes.NewBuffer(requestBytes))
+	return req
+}
+
+func newEditProfileRequest(b UserRequest) *http.Request {
+	requestBytes, _ := json.Marshal(b)
+	req, _ := http.NewRequest(http.MethodGet, "/edit_profile", bytes.NewBuffer(requestBytes))
 	return req
 }
