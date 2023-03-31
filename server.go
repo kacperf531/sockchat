@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/kacperf531/sockchat/storage"
@@ -17,6 +18,7 @@ const (
 	CreateAction      = "create"
 	LeaveAction       = "leave"
 	SendMessageAction = "send_message"
+	ResponseDeadline  = 3 * time.Second
 )
 
 // ChannelStore stores information about channels
@@ -108,7 +110,9 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = s.userService.CreateUser(context.TODO(), &userData)
+	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+	defer cancel()
+	err = s.userService.CreateUser(ctx, &userData)
 	if err != nil {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	}
@@ -131,7 +135,9 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// TODO: Handle authorization errors separately
-	err = s.userService.EditUser(context.TODO(), &userData)
+	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+	defer cancel()
+	err = s.userService.CreateUser(ctx, &userData)
 	if err != nil {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	}

@@ -17,7 +17,17 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Llongfile)
 	db, err := sql.Open("mysql", os.Getenv("DB_USER")+":"+os.Getenv("DB_PASSWORD")+"@tcp("+os.Getenv("DB_HOST")+")/sockchat")
 	if err != nil {
-		log.Fatalf("could not connect to the DB due to an error: %v", err)
+		log.Fatalf("could not create db object due to an error: %v", err)
+	}
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("could not connect to the db due to an error: %v", err)
+	}
+	if os.Getenv("ENVIRONMENT") == "DEV" {
+		err = storage.ResetUsersTable(db)
+		if err != nil {
+			log.Fatalf("error setting up the users table %v", err)
+		}
 	}
 	store, err := sockchat.NewSockChatStore()
 	users := storage.NewUserStore(db)

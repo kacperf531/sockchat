@@ -56,12 +56,7 @@ func mustSetUpTestDB(t *testing.T) *sql.DB {
 		t.Errorf("could not connect to the DB due to an error: %v", err)
 	}
 
-	db.Exec("DROP TABLE IF EXISTS users;")
-	_, err = db.Exec(`CREATE TABLE users (
-		nick      VARCHAR(255) NOT NULL,
-		pw_hash     VARCHAR(255) NOT NULL,
-		description      VARCHAR(255) NOT NULL
-	  );`)
+	err = ResetUsersTable(db)
 	if err != nil {
 		t.Errorf("error setting up the table %v", err)
 	}

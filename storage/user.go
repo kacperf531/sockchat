@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -62,9 +63,19 @@ func (s *userStore) UpdateUser(ctx context.Context, u *User) error {
 
 func (s *userStore) SelectUser(ctx context.Context, nick string) (*User, error) {
 	var user User
-	if err := s.db.QueryRow("SELECT * FROM users WHERE nick = ?;", nick).Scan(&user.Nick, &user.PwHash, &user.Description); err != nil {
+	if err := s.db.QueryRow("SELECT nick, pw_hash, description FROM users WHERE nick = ?;", nick).Scan(&user.Nick, &user.PwHash, &user.Description); err != nil {
 		return nil, fmt.Errorf("could not get row: %w", err)
 	}
 
 	return &user, nil
+}
+
+func ResetUsersTable(db *sql.DB) error {
+	db.Exec("DROP TABLE IF EXISTS users;")
+	commandBytes, err := os.ReadFile("../storage/create-users.sql")
+	if err != nil {
+		return fmt.Errorf("could not load script for creating users")
+	}
+	_, err = db.Exec(string(commandBytes))
+	return err
 }

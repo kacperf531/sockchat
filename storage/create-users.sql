@@ -1,0 +1,7 @@
+CREATE TABLE users (
+		id INT NOT NULL AUTO_INCREMENT,
+		nick      VARCHAR(255) NOT NULL UNIQUE,
+		pw_hash     VARCHAR(255) NOT NULL,
+		description      VARCHAR(255) NOT NULL,
+		PRIMARY KEY (id)
+	  );
