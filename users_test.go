@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/kacperf531/sockchat/errors"
 	"github.com/kacperf531/sockchat/storage"
 	"github.com/stretchr/testify/assert"
 )
@@ -17,6 +18,9 @@ type userStoreDouble struct {
 
 func (s *userStoreDouble) InsertUser(ctx context.Context, u *storage.User) error {
 	s.createCalls = append(s.createCalls, u)
+	if u.Nick == "already_exists" {
+		return errors.ResourceConflict
+	}
 	return nil
 }
 
@@ -51,9 +55,9 @@ func TestCreateUser(t *testing.T) {
 	})
 
 	t.Run("Returns error on already existing nick", func(t *testing.T) {
-		duplicateNickUser := &UserRequest{Nick: "Foo", Password: "foo420", Description: "description goes here"}
+		duplicateNickUser := &UserRequest{Nick: "already_exists", Password: "foo420", Description: "description goes here"}
 		err := service.CreateUser(context.TODO(), duplicateNickUser)
-		assert.Error(t, err)
+		assert.EqualError(t, err, errors.ResourceConflict.Error())
 	})
 
 	t.Run("Calls to update existing user when edit request is OK", func(t *testing.T) {

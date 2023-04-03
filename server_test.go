@@ -158,6 +158,15 @@ func TestSockChatHTTP(t *testing.T) {
 
 	})
 
+	t.Run("returns 409 on already existing nick", func(t *testing.T) {
+		request := newRegisterRequest(UserRequest{Nick: "already_exists", Password: "Bar420"})
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		assert.Equal(t, http.StatusConflict, response.Code)
+	})
+
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
 		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "D3scription", Password: "foo420"})
 		response := httptest.NewRecorder()
@@ -165,6 +174,15 @@ func TestSockChatHTTP(t *testing.T) {
 		server.ServeHTTP(response, request)
 
 		assert.Equal(t, http.StatusOK, response.Code)
+	})
+
+	t.Run("returns 401 on invalid password", func(t *testing.T) {
+		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "D3scription", Password: "fishyPassword"})
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		assert.Equal(t, http.StatusUnauthorized, response.Code)
 	})
 }
 
