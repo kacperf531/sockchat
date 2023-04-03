@@ -3,6 +3,7 @@ package sockchat
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 )
 
 const (
+	LoginAction       = "login"
 	JoinAction        = "join"
 	CreateAction      = "create"
 	LeaveAction       = "leave"
@@ -35,7 +37,8 @@ type ChannelStore interface {
 type SockchatServer struct {
 	store ChannelStore
 	http.Handler
-	userService UserService
+	userService           UserService
+	authorizedConnections map[*SockChatWS]bool
 }
 
 func NewSocketMessage(action string, payload any) SocketMessage {
@@ -54,6 +57,7 @@ func NewSockChatServer(store ChannelStore, userStore storage.UserStore) *Sockcha
 	s := new(SockchatServer)
 	s.store = store
 	s.userService = UserService{store: userStore}
+	s.authorizedConnections = make(map[*SockChatWS]bool)
 
 	router := http.NewServeMux()
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
@@ -79,19 +83,27 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			s.shutConnection(conn)
 			break
 		}
-
-		switch receivedMsg.Action {
-		case CreateAction:
-			s.createNewChannel(*receivedMsg, conn)
-		case JoinAction:
-			s.joinChannel(*receivedMsg, conn)
-		case LeaveAction:
-			s.leaveChannel(*receivedMsg, conn)
-		case SendMessageAction:
-			s.sendMessageToChannel(*receivedMsg, conn)
-		default:
-			log.Printf("Unexpected request received: %s", receivedMsg.Action)
-			conn.WriteSocketMsg(NewErrorMessage("action not supported"))
+		if receivedMsg.Action == LoginAction {
+			ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+			defer cancel()
+			s.loginUser(ctx, *receivedMsg, conn)
+		} else {
+			if !s.authorizedConnections[conn] {
+				conn.WriteSocketMsg(NewErrorMessage("Log in first using " + LoginAction))
+			}
+			switch receivedMsg.Action {
+			case CreateAction:
+				s.createNewChannel(*receivedMsg, conn)
+			case JoinAction:
+				s.joinChannel(*receivedMsg, conn)
+			case LeaveAction:
+				s.leaveChannel(*receivedMsg, conn)
+			case SendMessageAction:
+				s.sendMessageToChannel(*receivedMsg, conn)
+			default:
+				log.Printf("Unexpected request received: %s", receivedMsg.Action)
+				conn.WriteSocketMsg(NewErrorMessage("action not supported"))
+			}
 		}
 
 	}
@@ -174,6 +186,16 @@ func (s *SockchatServer) sendMessageToChannel(request SocketMessage, conn *SockC
 		user.WriteSocketMsg(NewSocketMessage("new_message", message))
 	}
 
+}
+
+func (s *SockchatServer) loginUser(ctx context.Context, request SocketMessage, conn *SockChatWS) {
+	req := UnmarshalLoginRequest(request.Payload)
+	if err := s.userService.LoginUser(ctx, req.Nick, req.Password); err != nil {
+		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
+	} else {
+		s.authorizedConnections[conn] = true
+		conn.WriteSocketMsg(NewSocketMessage(fmt.Sprintf("logged_in:%s", req.Nick), "{}"))
+	}
 }
 
 func (s *SockchatServer) createNewChannel(request SocketMessage, conn *SockChatWS) {

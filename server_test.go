@@ -57,6 +57,15 @@ func TestSockChatWS(t *testing.T) {
 	defer ws.Close()
 	defer server.Close()
 
+	t.Run("existing user can log in", func(t *testing.T) {
+		request := NewSocketMessage(LoginAction, LoginRequest{Nick: validUserNick, Password: validUserPassword})
+		mustWriteWSMessage(t, ws, request)
+
+		got := mustReadWSMessage(t, ws).Action
+		want := fmt.Sprintf("logged_in:%s", validUserNick)
+		AssertResponseAction(t, got, want)
+	})
+
 	t.Run("creates channel on request", func(t *testing.T) {
 		request := NewSocketMessage(CreateAction, ChannelRequest{Name: "FooBar420"})
 		mustWriteWSMessage(t, ws, request)
@@ -168,7 +177,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
-		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "D3scription", Password: "foo420"})
+		request := newEditProfileRequest(UserRequest{Nick: validUserNick, Description: "D3scription", Password: validUserPassword})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)

@@ -8,6 +8,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	validUserNick         = "SpecialTestUser"
+	validUserPassword     = "foo420"
+	validUserPasswordHash = "$2a$10$Xl002E7Vj5qM1RHMiM06KOCHofpLcPTIj7LeyZgTf62txoOBvoyia"
+)
+
 func mustDialWS(t *testing.T, url string) *websocket.Conn {
 	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
 

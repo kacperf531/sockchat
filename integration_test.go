@@ -18,6 +18,8 @@ func TestIntegration(t *testing.T) {
 
 	t.Run("user can send a message to a channel they have joined", func(t *testing.T) {
 		conn := mustDialWS(t, GetWsURL(server.URL))
+		mustWriteWSMessage(t, conn, NewSocketMessage(LoginAction, LoginRequest{Nick: validUserNick, Password: validUserPassword}))
+		mustReadWSMessage(t, conn) // read the login response from server
 		defer conn.Close()
 
 		mustWriteWSMessage(t, conn, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))

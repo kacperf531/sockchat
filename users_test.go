@@ -30,10 +30,8 @@ func (s *userStoreDouble) UpdateUser(ctx context.Context, u *storage.User) error
 }
 
 func (s *userStoreDouble) SelectUser(ctx context.Context, nick string) (*storage.User, error) {
-	// Password hash for `foo420` password
-	PasswordHash := "$2a$10$Xl002E7Vj5qM1RHMiM06KOCHofpLcPTIj7LeyZgTf62txoOBvoyia"
-	if nick == "Foo" {
-		return &storage.User{Nick: "Foo", PwHash: PasswordHash, Description: "desc"}, nil
+	if nick == validUserNick {
+		return &storage.User{Nick: validUserNick, PwHash: validUserPasswordHash, Description: "desc"}, nil
 	} else {
 		return nil, fmt.Errorf("user not found")
 	}
@@ -61,7 +59,7 @@ func TestCreateUser(t *testing.T) {
 	})
 
 	t.Run("Calls to update existing user when edit request is OK", func(t *testing.T) {
-		req := &UserRequest{Nick: "Foo", Description: "Bar", Password: "foo420"}
+		req := &UserRequest{Nick: validUserNick, Description: "Bar", Password: validUserPassword}
 		err := service.EditUser(context.TODO(), req)
 		assert.NoError(t, err)
 		assert.Equal(t, req.Nick, store.updateCalls[0].Nick)

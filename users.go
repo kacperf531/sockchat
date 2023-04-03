@@ -45,37 +45,41 @@ func (s *UserService) CreateUser(ctx context.Context, u *UserRequest) error {
 }
 
 func (s *UserService) EditUser(ctx context.Context, u *UserRequest) error {
-	if u.Password == "" {
-		return errors.Unauthorized
-	}
-	if u.Nick == "" {
-		return fmt.Errorf("you must provide your nick")
-	}
-	userData, err := s.getUser(ctx, u.Nick)
-	if err != nil {
-		return errors.Unauthorized
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(userData.PwHash), []byte(u.Password)); err != nil {
+	if !s.isAuthValid(ctx, u.Nick, u.Password) {
 		return errors.Unauthorized
 	}
 
 	userEntry := storage.User{Nick: u.Nick, Description: u.Description}
 
-	err = s.store.UpdateUser(ctx, &userEntry)
+	err := s.store.UpdateUser(ctx, &userEntry)
 	if err != nil {
-		log.Printf("error adding new user to db: %v", err)
+		log.Printf("error updating user in db: %v", err)
 		return fmt.Errorf(CouldNotUpdateUserMsg)
 	}
 	return nil
 }
 
-func (s *UserService) getUser(ctx context.Context, nick string) (*storage.User, error) {
-
-	userEntry, err := s.store.SelectUser(ctx, nick)
-
-	if err != nil {
-		return nil, fmt.Errorf("could not find user %s", nick)
+func (s *UserService) LoginUser(ctx context.Context, nick, password string) error {
+	if !s.isAuthValid(ctx, nick, password) {
+		return errors.Unauthorized
 	}
-	return userEntry, nil
+
+	return nil
+}
+
+func (s *UserService) isAuthValid(ctx context.Context, nick, password string) bool {
+	if password == "" {
+		return false
+	}
+	if nick == "" {
+		return false
+	}
+	userData, err := s.store.SelectUser(ctx, nick)
+	if err != nil {
+		return false
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(userData.PwHash), []byte(password)); err != nil {
+		return false
+	}
+	return true
 }
