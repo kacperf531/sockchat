@@ -3,8 +3,6 @@ package sockchat
 import (
 	"net/http/httptest"
 	"testing"
-
-	"github.com/gorilla/websocket"
 )
 
 func TestIntegration(t *testing.T) {
@@ -13,36 +11,37 @@ func TestIntegration(t *testing.T) {
 	store.CreateChannel("bar")
 	users := userStoreDouble{}
 	server := httptest.NewServer(NewSockChatServer(store, &users))
+	wsURL := GetWsURL(server.URL)
 
 	defer server.Close()
 
 	t.Run("user can send a message to a channel they have joined", func(t *testing.T) {
-		conn := mustDialWS(t, GetWsURL(server.URL))
-		mustWriteWSMessage(t, conn, NewSocketMessage(LoginAction, LoginRequest{Nick: validUserNick, Password: validUserPassword}))
-		mustReadWSMessage(t, conn) // read the login response from server
-		defer conn.Close()
+		ws := NewTestWS(t, wsURL)
+		ws.Write(t, NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword}))
+		<-ws.MessageStash // discard the login response from server
+		defer ws.Close()
 
-		mustWriteWSMessage(t, conn, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))
-		mustReadWSMessage(t, conn) // read the `channel_joined` from server
+		ws.Write(t, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))
+		<-ws.MessageStash //discard the `channel_joined` from server
 
-		mustWriteWSMessage(t, conn, NewSocketMessage(SendMessageAction, MessageEvent{"hi!", "foo"}))
+		ws.Write(t, NewSocketMessage(SendMessageAction, MessageEvent{"hi!", "foo"}))
 
-		got := mustReadWSMessage(t, conn).Action
+		received := <-ws.MessageStash
 		want := "new_message"
-		if got != want {
-			t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
+		if received.Action != want {
+			t.Errorf("unexpected action returned from server, got %s, should be %s", received.Action, want)
 		}
 
 	})
 
 	t.Run("two users create the channel at the same time", func(t *testing.T) {
-		conns := []*websocket.Conn{
-			mustDialWS(t, GetWsURL(server.URL)),
-			mustDialWS(t, GetWsURL(server.URL))}
+		conns := []*TestWS{
+			NewTestWS(t, wsURL),
+			NewTestWS(t, wsURL)}
 		for _, conn := range conns {
-			go func(conn *websocket.Conn) {
-				mustWriteWSMessage(t, conn, NewSocketMessage(CreateAction, ChannelRequest{"foo"}))
-				conn.Close()
+			go func(ws *TestWS) {
+				ws.Write(t, NewSocketMessage(CreateAction, ChannelRequest{"foo"}))
+				ws.Close()
 			}(conn)
 		}
 

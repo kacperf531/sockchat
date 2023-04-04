@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -52,90 +51,102 @@ func (store *StubChannelStore) ChannelHasUser(channelName string, conn *SockChat
 func TestSockChatWS(t *testing.T) {
 	store := &StubChannelStore{Channels: map[string]*Channel{}}
 	users := userStoreDouble{}
-	server := httptest.NewServer(NewSockChatServer(store, &users))
-	ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
+	testTimeoutUnauthorized := 200 * time.Millisecond
+	testTimeoutAuthorized := 60 * testTimeoutUnauthorized
+
+	server := NewSockChatServer(store, &users)
+	server.SetTimeoutValues(testTimeoutAuthorized, testTimeoutUnauthorized)
+	testServer := httptest.NewServer(server)
+	wsURL := GetWsURL(testServer.URL)
+	ws := NewTestWS(t, wsURL)
 
 	defer ws.Close()
-	defer server.Close()
+	defer testServer.Close()
 
 	t.Run("existing user can log in", func(t *testing.T) {
-		request := NewSocketMessage(LoginAction, LoginRequest{Nick: validUserNick, Password: validUserPassword})
-		mustWriteWSMessage(t, ws, request)
+		request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
-		want := fmt.Sprintf("logged_in:%s", validUserNick)
-		AssertResponseAction(t, got, want)
+		received := <-ws.MessageStash
+		want := fmt.Sprintf("logged_in:%s", ValidUserNick)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("creates channel on request", func(t *testing.T) {
 		request := NewSocketMessage(CreateAction, ChannelRequest{Name: "FooBar420"})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "channel_created"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("returns error on creating channel with existing name", func(t *testing.T) {
 		request := NewSocketMessage(CreateAction, ChannelRequest{Name: "already_exists"})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("can join a channel", func(t *testing.T) {
 		request := NewSocketMessage(JoinAction, ChannelRequest{Name: ChannelWithoutUser})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "channel_joined"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("can leave a channel", func(t *testing.T) {
 		request := NewSocketMessage(LeaveAction, ChannelRequest{Name: ChannelWithUser})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "channel_left"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("error if leaving a channel user are not in", func(t *testing.T) {
 		request := NewSocketMessage(LeaveAction, ChannelRequest{Name: ChannelWithoutUser})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("can not join a channel they are already in", func(t *testing.T) {
 		request := NewSocketMessage(JoinAction, ChannelRequest{Name: ChannelWithUser})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 	})
 
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
 		request := NewSocketMessage(SendMessageAction, MessageEvent{"foo", ChannelWithoutUser})
-		mustWriteWSMessage(t, ws, request)
+		ws.Write(t, request)
 
-		got := mustReadWSMessage(t, ws).Action
+		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, got, want)
+		AssertResponseAction(t, received.Action, want)
 
 	})
 
-	// TODO: This test takes way too much time!
 	t.Run("unauthorized connection times out", func(t *testing.T) {
-		new_ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
-		within(t, unauthorizedReadDeadLine+100*time.Millisecond, func() { assert.Equal(t, mustReadWSMessage(t, new_ws).Action, "connection_timed_out") })
+		new_ws := NewTestWS(t, wsURL)
+		within(t, testTimeoutUnauthorized+20*time.Millisecond, func() { received := <-new_ws.MessageStash; assert.Equal(t, received.Action, "connection_timed_out") })
+	})
 
+	t.Run("connection timeout period is extended after logging in", func(t *testing.T) {
+		new_ws := NewTestWS(t, wsURL)
+		request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
+		new_ws.Write(t, request)
+		<-ws.MessageStash // read `login` response
+		within(t, testTimeoutUnauthorized+20*time.Millisecond, func() { assert.Empty(t, new_ws.MessageStash) })
 	})
 
 }
@@ -202,7 +213,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
-		request := newEditProfileRequest(UserRequest{Nick: validUserNick, Description: "D3scription", Password: validUserPassword})
+		request := newEditProfileRequest(UserRequest{Nick: ValidUserNick, Description: "D3scription", Password: ValidUserPassword})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)

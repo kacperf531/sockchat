@@ -30,8 +30,8 @@ func (s *userStoreDouble) UpdateUser(ctx context.Context, u *storage.User) error
 }
 
 func (s *userStoreDouble) SelectUser(ctx context.Context, nick string) (*storage.User, error) {
-	if nick == validUserNick {
-		return &storage.User{Nick: validUserNick, PwHash: validUserPasswordHash, Description: "desc"}, nil
+	if nick == ValidUserNick {
+		return &storage.User{Nick: ValidUserNick, PwHash: ValidUserPasswordHash, Description: "desc"}, nil
 	} else {
 		return nil, fmt.Errorf("user not found")
 	}
@@ -59,7 +59,7 @@ func TestCreateUser(t *testing.T) {
 	})
 
 	t.Run("Calls to update existing user when edit request is OK", func(t *testing.T) {
-		req := &UserRequest{Nick: validUserNick, Description: "Bar", Password: validUserPassword}
+		req := &UserRequest{Nick: ValidUserNick, Description: "Bar", Password: ValidUserPassword}
 		err := service.EditUser(context.TODO(), req)
 		assert.NoError(t, err)
 		assert.Equal(t, req.Nick, store.updateCalls[0].Nick)

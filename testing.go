@@ -2,6 +2,7 @@ package sockchat
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"testing"
 
@@ -9,39 +10,47 @@ import (
 )
 
 const (
-	validUserNick         = "SpecialTestUser"
-	validUserPassword     = "foo420"
-	validUserPasswordHash = "$2a$10$Xl002E7Vj5qM1RHMiM06KOCHofpLcPTIj7LeyZgTf62txoOBvoyia"
+	ValidUserNick         = "SpecialTestUser"
+	ValidUserPassword     = "foo420"
+	ValidUserPasswordHash = "$2a$10$Xl002E7Vj5qM1RHMiM06KOCHofpLcPTIj7LeyZgTf62txoOBvoyia"
 )
 
-func mustDialWS(t *testing.T, url string) *websocket.Conn {
-	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
+// Test WS client
+type TestWS struct {
+	*websocket.Conn
+	MessageStash chan SocketMessage
+}
 
+// Connects to provided URL and returns initialized TestWS
+func NewTestWS(t *testing.T, url string) *TestWS {
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		t.Fatalf("could not open a ws connection on %s %v", url, err)
 	}
-
-	return ws
+	ws := TestWS{Conn: conn, MessageStash: make(chan SocketMessage)}
+	go ws.readIncomingMessages()
+	return &ws
 }
 
-func mustWriteWSMessage(t testing.TB, conn *websocket.Conn, message SocketMessage) {
-	t.Helper()
+func (ws *TestWS) Write(t testing.TB, message SocketMessage) {
 	payloadBytes, err := json.Marshal(message)
 	if err != nil {
 		t.Fatalf("could not marshal message before sending to the server %v", err)
 	}
-	if err := conn.WriteMessage(websocket.TextMessage, payloadBytes); err != nil {
+	if err := ws.WriteMessage(websocket.TextMessage, payloadBytes); err != nil {
 		t.Fatalf("could not send message over ws connection %v", err)
 	}
 }
 
-func mustReadWSMessage(t testing.TB, conn *websocket.Conn) SocketMessage {
-	t.Helper()
-	receivedMessage := &SocketMessage{}
-	if err := conn.ReadJSON(receivedMessage); err != nil {
-		t.Fatalf("could not parse message coming from ws %v", err)
+func (ws *TestWS) readIncomingMessages() {
+	for {
+		receivedMessage := &SocketMessage{}
+		if err := ws.ReadJSON(receivedMessage); err != nil {
+			log.Printf("Test websocket read interrupted due to error: %v; closing now", err)
+			ws.Close()
+		}
+		ws.MessageStash <- *receivedMessage
 	}
-	return *receivedMessage
 }
 
 func GetWsURL(serverURL string) string {

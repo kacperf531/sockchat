@@ -24,7 +24,9 @@ const (
 	SendMessageAction = "send_message"
 	ResponseDeadline  = 3 * time.Second
 
-	unauthorizedReadDeadLine = 60 * time.Second
+	// The connections that haven't logged in successfully will be disconnected after this time
+	defaultTimeoutUnauthorized = 1 * time.Minute
+	defaultTimeoutAuthorized   = 10 * time.Minute
 )
 
 // ChannelStore stores information about channels
@@ -46,6 +48,8 @@ type SockchatServer struct {
 	http.Handler
 	userService           UserService
 	authorizedConnections map[*SockChatWS]bool
+	timeoutUnauthorized   time.Duration
+	timeoutAuthorized     time.Duration
 }
 
 func NewSocketMessage(action string, payload any) SocketMessage {
@@ -66,6 +70,8 @@ func NewSockChatServer(store ChannelStore, userStore storage.UserStore) *Sockcha
 	s.userService = UserService{store: userStore}
 	s.authorizedConnections = make(map[*SockChatWS]bool)
 
+	s.SetTimeoutValues(defaultTimeoutAuthorized, defaultTimeoutUnauthorized)
+
 	router := http.NewServeMux()
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
 	router.Handle("/register", http.HandlerFunc(s.register))
@@ -80,10 +86,15 @@ var wsUpgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+func (s *SockchatServer) SetTimeoutValues(authorized, unauthorized time.Duration) {
+	s.timeoutAuthorized = authorized
+	s.timeoutUnauthorized = unauthorized
+}
+
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
 	defer s.shutConnection(conn)
-	conn.SetReadDeadline(time.Now().Add(unauthorizedReadDeadLine))
+	conn.SetReadDeadline(time.Now().Add(s.timeoutUnauthorized))
 	for {
 		receivedMsg, err := conn.ReadSocketMsg()
 		if err != nil {
@@ -207,6 +218,7 @@ func (s *SockchatServer) loginUser(ctx context.Context, request SocketMessage, c
 	} else {
 		s.authorizedConnections[conn] = true
 		conn.WriteSocketMsg(NewSocketMessage(fmt.Sprintf("logged_in:%s", req.Nick), "{}"))
+		conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
 	}
 }
 
