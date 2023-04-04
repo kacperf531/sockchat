@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -130,12 +131,36 @@ func TestSockChatWS(t *testing.T) {
 
 	})
 
+	// TODO: This test takes way too much time!
+	t.Run("unauthorized connection times out", func(t *testing.T) {
+		new_ws := mustDialWS(t, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws")
+		within(t, unauthorizedReadDeadLine+100*time.Millisecond, func() { assert.Equal(t, mustReadWSMessage(t, new_ws).Action, "connection_timed_out") })
+
+	})
+
 }
 
 func AssertResponseAction(t *testing.T, got, want string) {
 	t.Helper()
 	if got != want {
 		t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
+	}
+}
+
+func within(t testing.TB, d time.Duration, assert func()) {
+	t.Helper()
+
+	done := make(chan struct{}, 1)
+
+	go func() {
+		assert()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(d):
+		t.Error("timed out")
+	case <-done:
 	}
 }
 

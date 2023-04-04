@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -22,6 +23,8 @@ const (
 	LeaveAction       = "leave"
 	SendMessageAction = "send_message"
 	ResponseDeadline  = 3 * time.Second
+
+	unauthorizedReadDeadLine = 60 * time.Second
 )
 
 // ChannelStore stores information about channels
@@ -32,6 +35,10 @@ type ChannelStore interface {
 	RemoveUserFromChannel(channelName string, conn *SockChatWS) error
 	ChannelHasUser(channelName string, conn *SockChatWS) bool
 	DisconnectUser(conn *SockChatWS)
+}
+
+type Sleeper interface {
+	Sleep()
 }
 
 type SockchatServer struct {
@@ -76,10 +83,14 @@ var wsUpgrader = websocket.Upgrader{
 func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn := newSockChatWS(w, r)
 	defer s.shutConnection(conn)
+	conn.SetReadDeadline(time.Now().Add(unauthorizedReadDeadLine))
 	for {
 		receivedMsg, err := conn.ReadSocketMsg()
 		if err != nil {
-			log.Printf("error occured when listening for ws messages, closing connection %v", err)
+			if os.IsTimeout(err) {
+				conn.WriteSocketMsg(NewSocketMessage("connection_timed_out", "{}"))
+			}
+			log.Printf("error occured when listening for ws messages, closing connection: %v", err)
 			s.shutConnection(conn)
 			break
 		}
@@ -169,6 +180,7 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 	conn.Close()
 	s.store.DisconnectUser(conn)
+	delete(s.authorizedConnections, conn)
 }
 
 func (s *SockchatServer) sendMessageToChannel(request SocketMessage, conn *SockChatWS) {
