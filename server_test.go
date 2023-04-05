@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -69,13 +70,15 @@ func TestSockChatWS(t *testing.T) {
 	defer ws.Close()
 	defer testServer.Close()
 
+	// TODO: Get rid of tests' co-dependency (i.e. logging in before creating a channel &c)
+
 	t.Run("existing user can log in", func(t *testing.T) {
 		request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
 		ws.Write(t, request)
 
 		received := <-ws.MessageStash
 		want := fmt.Sprintf("logged_in:%s", ValidUserNick)
-		AssertResponseAction(t, received.Action, want)
+		assert.Equal(t, want, received.Action)
 	})
 
 	t.Run("creates channel on request", func(t *testing.T) {
@@ -84,7 +87,7 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "channel_created"
-		AssertResponseAction(t, received.Action, want)
+		assert.Equal(t, want, received.Action)
 	})
 
 	t.Run("returns error on creating channel with existing name", func(t *testing.T) {
@@ -93,7 +96,7 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, received.Action, want)
+		assert.Equal(t, want, received.Action)
 	})
 
 	t.Run("can join a channel", func(t *testing.T) {
@@ -102,7 +105,10 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "channel_joined"
-		AssertResponseAction(t, received.Action, want)
+		require.Equal(t, received.Action, want)
+		details := UnmarshalChannelUserChangeEvent(received.Payload)
+		assert.Equal(t, details.Channel, ChannelWithoutUser)
+		assert.Equal(t, details.Nick, ValidUserNick)
 	})
 
 	t.Run("can leave a channel", func(t *testing.T) {
@@ -111,7 +117,10 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "channel_left"
-		AssertResponseAction(t, received.Action, want)
+		require.Equal(t, received.Action, want)
+		details := UnmarshalChannelUserChangeEvent(received.Payload)
+		assert.Equal(t, details.Channel, ChannelWithUser)
+		assert.Equal(t, details.Nick, ValidUserNick)
 	})
 
 	t.Run("error if leaving a channel user are not in", func(t *testing.T) {
@@ -120,7 +129,7 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, received.Action, want)
+		assert.Equal(t, want, received.Action)
 	})
 
 	t.Run("can not join a channel they are already in", func(t *testing.T) {
@@ -129,7 +138,7 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, received.Action, want)
+		assert.Equal(t, want, received.Action)
 	})
 
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
@@ -138,7 +147,7 @@ func TestSockChatWS(t *testing.T) {
 
 		received := <-ws.MessageStash
 		want := "invalid_request_received"
-		AssertResponseAction(t, received.Action, want)
+		assert.Equal(t, want, received.Action)
 
 	})
 
@@ -164,13 +173,6 @@ func TestSockChatWS(t *testing.T) {
 		}
 	})
 
-}
-
-func AssertResponseAction(t *testing.T, got, want string) {
-	t.Helper()
-	if got != want {
-		t.Errorf("unexpected action returned from server, got %s, should be %s", got, want)
-	}
 }
 
 func within(t testing.TB, d time.Duration, assert func()) {

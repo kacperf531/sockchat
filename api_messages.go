@@ -16,8 +16,8 @@ type ChannelRequest struct {
 }
 
 type ChannelUserChangeEvent struct {
-	Name     string `json:"name"`
-	UserName string `json:"user"`
+	Channel string `json:"channel"`
+	Nick    string `json:"nick"`
 }
 
 type SendMessageRequest struct {
@@ -49,5 +49,15 @@ func UnmarshalLoginRequest(requestBytes json.RawMessage) *LoginRequest {
 		return nil
 	}
 	return &loginRequest
+
+}
+
+func UnmarshalChannelUserChangeEvent(requestBytes json.RawMessage) *ChannelUserChangeEvent {
+	channelUserChangeEvent := ChannelUserChangeEvent{}
+	if err := json.Unmarshal(requestBytes, &channelUserChangeEvent); err != nil {
+		log.Printf("error while unmarshaling request for channel user change event: %v", err)
+		return nil
+	}
+	return &channelUserChangeEvent
 
 }

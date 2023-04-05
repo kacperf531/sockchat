@@ -39,17 +39,12 @@ type ChannelStore interface {
 	DisconnectUser(conn *SockChatWS)
 }
 
-type Sleeper interface {
-	Sleep()
-}
-
 type SockchatServer struct {
 	store ChannelStore
 	http.Handler
-	userService           UserService
-	authorizedConnections map[*SockChatWS]string
-	timeoutUnauthorized   time.Duration
-	timeoutAuthorized     time.Duration
+	userService         UserService
+	timeoutUnauthorized time.Duration
+	timeoutAuthorized   time.Duration
 }
 
 func NewSocketMessage(action string, payload any) SocketMessage {
@@ -68,7 +63,6 @@ func NewSockChatServer(store ChannelStore, userStore storage.UserStore) *Sockcha
 	s := new(SockchatServer)
 	s.store = store
 	s.userService = UserService{store: userStore}
-	s.authorizedConnections = make(map[*SockChatWS]string)
 
 	s.SetTimeoutValues(defaultTimeoutAuthorized, defaultTimeoutUnauthorized)
 
@@ -110,7 +104,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			s.loginUser(ctx, *receivedMsg, conn)
 		} else {
-			if s.authorizedConnections[conn] == "" {
+			if conn.nick == "" {
 				conn.WriteSocketMsg(NewErrorMessage("Log in first using " + LoginAction))
 			}
 			conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
@@ -191,7 +185,6 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 
 func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 	s.store.DisconnectUser(conn)
-	delete(s.authorizedConnections, conn)
 	conn.Close()
 }
 
@@ -207,7 +200,7 @@ func (s *SockchatServer) sendMessageToChannel(request SocketMessage, conn *SockC
 	}
 	channel, _ := s.store.GetChannel(req.Channel)
 	for user := range channel.Users {
-		user.WriteSocketMsg(NewSocketMessage("new_message", MessageEvent{Channel: req.Channel, Author: s.authorizedConnections[conn], Text: req.Text}))
+		user.WriteSocketMsg(NewSocketMessage("new_message", MessageEvent{Channel: req.Channel, Author: conn.nick, Text: req.Text}))
 	}
 
 }
@@ -217,7 +210,7 @@ func (s *SockchatServer) loginUser(ctx context.Context, request SocketMessage, c
 	if err := s.userService.LoginUser(ctx, req.Nick, req.Password); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 	} else {
-		s.authorizedConnections[conn] = req.Nick
+		conn.nick = req.Nick
 		conn.WriteSocketMsg(NewSocketMessage(fmt.Sprintf("logged_in:%s", req.Nick), "{}"))
 		conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
 	}
@@ -237,7 +230,7 @@ func (s *SockchatServer) joinChannel(request SocketMessage, conn *SockChatWS) {
 	if err := s.store.AddUserToChannel(channel.Name, conn); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 	} else {
-		conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelUserChangeEvent{Name: channel.Name, UserName: conn.RemoteAddr().String()}))
+		conn.WriteSocketMsg(NewSocketMessage("channel_joined", ChannelUserChangeEvent{Channel: channel.Name, Nick: conn.nick}))
 	}
 }
 
@@ -249,7 +242,7 @@ func (s *SockchatServer) leaveChannel(request SocketMessage, conn *SockChatWS) {
 	if err := s.store.RemoveUserFromChannel(channel.Name, conn); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 	} else {
-		conn.WriteSocketMsg(NewSocketMessage("channel_left", ChannelUserChangeEvent{Name: channel.Name, UserName: conn.RemoteAddr().String()}))
+		conn.WriteSocketMsg(NewSocketMessage("channel_left", ChannelUserChangeEvent{Channel: channel.Name, Nick: conn.nick}))
 	}
 }
 
@@ -257,6 +250,7 @@ type SockChatWS struct {
 	*websocket.Conn
 	writeLock sync.Mutex
 	readLock  sync.Mutex
+	nick      string
 }
 
 func newSockChatWS(w http.ResponseWriter, r *http.Request) *SockChatWS {
