@@ -145,8 +145,17 @@ func TestSockChatWS(t *testing.T) {
 		new_ws := NewTestWS(t, wsURL)
 		request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
 		new_ws.Write(t, request)
-		<-ws.MessageStash // read `login` response
-		within(t, testTimeoutUnauthorized+20*time.Millisecond, func() { assert.Empty(t, new_ws.MessageStash) })
+		<-new_ws.MessageStash // read `login` response
+select {
+case received := <-new_ws.MessageStash:
+	if received.Action == "connection_timed_out" {
+		t.Error("connection timed out", received)
+	} else {
+		t.Error("unexpected message received", received)
+	}
+case <-time.After(testTimeoutUnauthorized+20*time.Millisecond):
+	return
+}
 	})
 
 }
