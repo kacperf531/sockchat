@@ -16,7 +16,7 @@ type SockChatStore struct {
 }
 
 func NewSockChatStore() (*SockChatStore, error) {
-	return &SockChatStore{Channels: map[string]*Channel{}}, nil
+	return &SockChatStore{Channels: make(map[string]*Channel)}, nil
 }
 
 func (s *SockChatStore) GetChannel(name string) (*Channel, error) {
