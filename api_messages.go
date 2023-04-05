@@ -20,6 +20,18 @@ type ChannelUserChangeEvent struct {
 	UserName string `json:"user"`
 }
 
+type SendMessageRequest struct {
+	Channel string `json:"channel"`
+	Text    string `json:"text"`
+}
+
+// For create & edit profile web API requests
+type UserRequest struct {
+	Nick        string `json:"nick"`
+	Password    string `json:"password"`
+	Description string `json:"description"`
+}
+
 func UnmarshalChannelRequest(requestBytes json.RawMessage) *ChannelRequest {
 	channelRequest := ChannelRequest{}
 	if err := json.Unmarshal(requestBytes, &channelRequest); err != nil {

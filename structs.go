@@ -1,6 +1,9 @@
 package sockchat
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"log"
+)
 
 type SocketMessage struct {
 	Action  string          `json:"action"`
@@ -14,10 +17,15 @@ type Channel struct {
 type MessageEvent struct {
 	Text    string `json:"text"`
 	Channel string `json:"channel"`
+	Author  string `json:"author"`
 }
 
-type UserRequest struct {
-	Nick        string `json:"nick"`
-	Password    string `json:"password"`
-	Description string `json:"description"`
+func UnmarshalMessageEvent(requestBytes json.RawMessage) *MessageEvent {
+	messageEvent := MessageEvent{}
+	if err := json.Unmarshal(requestBytes, &messageEvent); err != nil {
+		log.Printf("error while unmarshaling request for sending message: %v", err)
+		return nil
+	}
+	return &messageEvent
+
 }

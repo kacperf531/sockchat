@@ -47,7 +47,7 @@ type SockchatServer struct {
 	store ChannelStore
 	http.Handler
 	userService           UserService
-	authorizedConnections map[*SockChatWS]bool
+	authorizedConnections map[*SockChatWS]string
 	timeoutUnauthorized   time.Duration
 	timeoutAuthorized     time.Duration
 }
@@ -68,7 +68,7 @@ func NewSockChatServer(store ChannelStore, userStore storage.UserStore) *Sockcha
 	s := new(SockchatServer)
 	s.store = store
 	s.userService = UserService{store: userStore}
-	s.authorizedConnections = make(map[*SockChatWS]bool)
+	s.authorizedConnections = make(map[*SockChatWS]string)
 
 	s.SetTimeoutValues(defaultTimeoutAuthorized, defaultTimeoutUnauthorized)
 
@@ -110,9 +110,10 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			s.loginUser(ctx, *receivedMsg, conn)
 		} else {
-			if !s.authorizedConnections[conn] {
+			if s.authorizedConnections[conn] == "" {
 				conn.WriteSocketMsg(NewErrorMessage("Log in first using " + LoginAction))
 			}
+			conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
 			switch receivedMsg.Action {
 			case CreateAction:
 				s.createNewChannel(*receivedMsg, conn)
@@ -189,24 +190,24 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) shutConnection(conn *SockChatWS) {
-	conn.Close()
 	s.store.DisconnectUser(conn)
 	delete(s.authorizedConnections, conn)
+	conn.Close()
 }
 
 func (s *SockchatServer) sendMessageToChannel(request SocketMessage, conn *SockChatWS) {
-	message := MessageEvent{}
-	if err := json.Unmarshal(request.Payload, &message); err != nil {
+	req := SendMessageRequest{}
+	if err := json.Unmarshal(request.Payload, &req); err != nil {
 		log.Printf("error while unmarshaling request for sending message: %v", err)
 		return
 	}
-	if !s.store.ChannelHasUser(message.Channel, conn) {
+	if !s.store.ChannelHasUser(req.Channel, conn) {
 		conn.WriteSocketMsg(NewErrorMessage("you are not member of this channel"))
 		return
 	}
-	channel, _ := s.store.GetChannel(message.Channel)
+	channel, _ := s.store.GetChannel(req.Channel)
 	for user := range channel.Users {
-		user.WriteSocketMsg(NewSocketMessage("new_message", message))
+		user.WriteSocketMsg(NewSocketMessage("new_message", MessageEvent{Channel: req.Channel, Author: s.authorizedConnections[conn], Text: req.Text}))
 	}
 
 }
@@ -216,7 +217,7 @@ func (s *SockchatServer) loginUser(ctx context.Context, request SocketMessage, c
 	if err := s.userService.LoginUser(ctx, req.Nick, req.Password); err != nil {
 		conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 	} else {
-		s.authorizedConnections[conn] = true
+		s.authorizedConnections[conn] = req.Nick
 		conn.WriteSocketMsg(NewSocketMessage(fmt.Sprintf("logged_in:%s", req.Nick), "{}"))
 		conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
 	}

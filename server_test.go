@@ -19,7 +19,6 @@ const (
 
 // StubChannelStore implements ChannelStore for testing purposes
 type StubChannelStore struct {
-	*SockChatStore
 	Channels map[string]*Channel
 }
 
@@ -46,6 +45,13 @@ func (store *StubChannelStore) RemoveUserFromChannel(channelName string, conn *S
 
 func (store *StubChannelStore) ChannelHasUser(channelName string, conn *SockChatWS) bool {
 	return channelName == ChannelWithUser
+}
+
+func (store *StubChannelStore) DisconnectUser(conn *SockChatWS) {
+}
+
+func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
+	return nil, nil
 }
 
 func TestSockChatWS(t *testing.T) {
@@ -127,7 +133,7 @@ func TestSockChatWS(t *testing.T) {
 	})
 
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
-		request := NewSocketMessage(SendMessageAction, MessageEvent{"foo", ChannelWithoutUser})
+		request := NewSocketMessage(SendMessageAction, SendMessageRequest{"foo", ChannelWithoutUser})
 		ws.Write(t, request)
 
 		received := <-ws.MessageStash
@@ -146,16 +152,16 @@ func TestSockChatWS(t *testing.T) {
 		request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
 		new_ws.Write(t, request)
 		<-new_ws.MessageStash // read `login` response
-select {
-case received := <-new_ws.MessageStash:
-	if received.Action == "connection_timed_out" {
-		t.Error("connection timed out", received)
-	} else {
-		t.Error("unexpected message received", received)
-	}
-case <-time.After(testTimeoutUnauthorized+20*time.Millisecond):
-	return
-}
+		select {
+		case received := <-new_ws.MessageStash:
+			if received.Action == "connection_timed_out" {
+				t.Error("connection timed out", received)
+			} else {
+				t.Error("unexpected message received", received)
+			}
+		case <-time.After(testTimeoutUnauthorized + 20*time.Millisecond):
+			return
+		}
 	})
 
 }
@@ -185,7 +191,7 @@ func within(t testing.TB, d time.Duration, assert func()) {
 }
 
 func TestSockChatHTTP(t *testing.T) {
-	store := &StubChannelStore{Channels: map[string]*Channel{}}
+	store, _ := NewSockChatStore()
 	users := userStoreDouble{}
 	server := NewSockChatServer(store, &users)
 

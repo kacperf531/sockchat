@@ -3,6 +3,9 @@ package sockchat
 import (
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIntegration(t *testing.T) {
@@ -24,13 +27,14 @@ func TestIntegration(t *testing.T) {
 		ws.Write(t, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))
 		<-ws.MessageStash //discard the `channel_joined` from server
 
-		ws.Write(t, NewSocketMessage(SendMessageAction, MessageEvent{"hi!", "foo"}))
+		ws.Write(t, NewSocketMessage(SendMessageAction, SendMessageRequest{Channel: "foo", Text: "hi!"}))
 
 		received := <-ws.MessageStash
-		want := "new_message"
-		if received.Action != want {
-			t.Errorf("unexpected action returned from server, got %s, should be %s", received.Action, want)
-		}
+		wantAction := "new_message"
+		require.Equal(t, wantAction, received.Action, "action should be %s", wantAction)
+		message := UnmarshalMessageEvent(received.Payload)
+		wantAuthor := ValidUserNick
+		assert.Equal(t, wantAuthor, message.Author, "author should be %s", wantAuthor)
 
 	})
 
