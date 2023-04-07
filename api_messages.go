@@ -2,8 +2,28 @@ package sockchat
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 )
+
+const (
+	LoginAction       = "login"
+	JoinAction        = "join"
+	CreateAction      = "create"
+	LeaveAction       = "leave"
+	SendMessageAction = "send_message"
+
+	UserJoinedChannelEvent = "user has joined the channel"
+	UserLeftChannelEvent   = "user has left the channel"
+	YouLeftChannelEvent    = "you have left the channel"
+	NewMessageEvent        = "new message in channel"
+	InvalidRequestEvent    = "request is invalid"
+)
+
+type SocketMessage struct {
+	Action  string          `json:"action"`
+	Payload json.RawMessage `json:"payload"`
+}
 
 type LoginRequest struct {
 	Nick     string `json:"nick"`
@@ -20,26 +40,33 @@ type ChannelUserChangeEvent struct {
 	Nick    string `json:"nick"`
 }
 
+// For messages sent to server
 type SendMessageRequest struct {
 	Channel string `json:"channel"`
 	Text    string `json:"text"`
 }
 
+// For messages sent from server
+type MessageEvent struct {
+	Text    string `json:"text"`
+	Channel string `json:"channel"`
+	Author  string `json:"author"`
+}
+
 // For create & edit profile web API requests
-type UserRequest struct {
+type UserProfile struct {
 	Nick        string `json:"nick"`
 	Password    string `json:"password"`
 	Description string `json:"description"`
 }
 
-func UnmarshalChannelRequest(requestBytes json.RawMessage) *ChannelRequest {
+func UnmarshalChannelRequest(requestBytes json.RawMessage) (*ChannelRequest, error) {
 	channelRequest := ChannelRequest{}
 	if err := json.Unmarshal(requestBytes, &channelRequest); err != nil {
 		log.Printf("error while unmarshaling request for joining channel: %v", err)
-		return nil
+		return nil, fmt.Errorf(InvalidRequestEvent)
 	}
-	return &channelRequest
-
+	return &channelRequest, nil
 }
 
 func UnmarshalLoginRequest(requestBytes json.RawMessage) *LoginRequest {
@@ -49,7 +76,6 @@ func UnmarshalLoginRequest(requestBytes json.RawMessage) *LoginRequest {
 		return nil
 	}
 	return &loginRequest
-
 }
 
 func UnmarshalChannelUserChangeEvent(requestBytes json.RawMessage) *ChannelUserChangeEvent {
@@ -59,5 +85,22 @@ func UnmarshalChannelUserChangeEvent(requestBytes json.RawMessage) *ChannelUserC
 		return nil
 	}
 	return &channelUserChangeEvent
+}
 
+func UnmarshalMessageRequest(requestBytes json.RawMessage) (*SendMessageRequest, error) {
+	messageRequest := SendMessageRequest{}
+	if err := json.Unmarshal(requestBytes, &messageRequest); err != nil {
+		log.Printf("error while unmarshaling request for message: %v", err)
+		return nil, fmt.Errorf(InvalidRequestEvent)
+	}
+	return &messageRequest, nil
+}
+
+func UnmarshalMessageEvent(requestBytes json.RawMessage) *MessageEvent {
+	messageEvent := MessageEvent{}
+	if err := json.Unmarshal(requestBytes, &messageEvent); err != nil {
+		log.Printf("error while unmarshaling request for sending message: %v", err)
+		return nil
+	}
+	return &messageEvent
 }

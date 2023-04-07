@@ -29,7 +29,7 @@ func main() {
 			log.Fatalf("error setting up the users table %v", err)
 		}
 	}
-	store, err := sockchat.NewSockChatStore()
+	store, err := sockchat.NewChannelStore()
 	users := storage.NewUserStore(db)
 
 	if err != nil {

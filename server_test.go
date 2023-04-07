@@ -13,55 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	ChannelWithUser    = "channel_with_user"
-	ChannelWithoutUser = "channel_without_user"
-)
-
-// StubChannelStore implements ChannelStore for testing purposes
-type StubChannelStore struct {
-	Channels map[string]*Channel
-}
-
-func (store *StubChannelStore) CreateChannel(name string) error {
-	if name == "already_exists" {
-		return fmt.Errorf("channel `%s` already exists", name)
-	}
-	return nil
-}
-
-func (store *StubChannelStore) AddUserToChannel(channelName string, conn *SockChatWS) error {
-	if channelName == ChannelWithUser {
-		return fmt.Errorf("user already in channel")
-	}
-	return nil
-}
-
-func (store *StubChannelStore) RemoveUserFromChannel(channelName string, conn *SockChatWS) error {
-	if channelName != ChannelWithUser {
-		return fmt.Errorf("user is not member of the channel")
-	}
-	return nil
-}
-
-func (store *StubChannelStore) ChannelHasUser(channelName string, conn *SockChatWS) bool {
-	return channelName == ChannelWithUser
-}
-
-func (store *StubChannelStore) DisconnectUser(conn *SockChatWS) {
-}
-
-func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
-	return nil, nil
-}
-
 func TestSockChatWS(t *testing.T) {
-	store := &StubChannelStore{Channels: map[string]*Channel{}}
-	users := userStoreDouble{}
+	store := &StubChannelStore{Channels: map[string]*Channel{ChannelWithUser: {members: make(map[SockchatUserHandler]bool)}}}
+	users := &userStoreDouble{}
 	testTimeoutUnauthorized := 200 * time.Millisecond
-	testTimeoutAuthorized := 60 * testTimeoutUnauthorized
+	testTimeoutAuthorized := 20 * testTimeoutUnauthorized
 
-	server := NewSockChatServer(store, &users)
+	server := NewSockChatServer(store, users)
+
 	server.SetTimeoutValues(testTimeoutAuthorized, testTimeoutUnauthorized)
 	testServer := httptest.NewServer(server)
 	wsURL := GetWsURL(testServer.URL)
@@ -70,24 +29,24 @@ func TestSockChatWS(t *testing.T) {
 	defer ws.Close()
 	defer testServer.Close()
 
-	// TODO: Get rid of tests' co-dependency (i.e. logging in before creating a channel &c)
+	request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
+	handler, _ := server.authorizedUsers.GetHandler(ValidUserNick)
+	store.Channels[ChannelWithUser].AddMember(handler)
+	ws.Write(t, request)
 
-	t.Run("existing user can log in", func(t *testing.T) {
-		request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
-		ws.Write(t, request)
-
-		received := <-ws.MessageStash
-		want := fmt.Sprintf("logged_in:%s", ValidUserNick)
-		assert.Equal(t, want, received.Action)
-	})
+	received := <-ws.MessageStash
+	want := fmt.Sprintf("logged_in:%s", ValidUserNick)
+	require.Equal(t, want, received.Action)
 
 	t.Run("creates channel on request", func(t *testing.T) {
-		request := NewSocketMessage(CreateAction, ChannelRequest{Name: "FooBar420"})
+		channelName := "FooBar420"
+		request := NewSocketMessage(CreateAction, ChannelRequest{Name: channelName})
 		ws.Write(t, request)
 
 		received := <-ws.MessageStash
-		want := "channel_created"
-		assert.Equal(t, want, received.Action)
+		// User joins channel on creation
+		want := UserJoinedChannelEvent
+		require.Equal(t, want, received.Action)
 	})
 
 	t.Run("returns error on creating channel with existing name", func(t *testing.T) {
@@ -95,7 +54,7 @@ func TestSockChatWS(t *testing.T) {
 		ws.Write(t, request)
 
 		received := <-ws.MessageStash
-		want := "invalid_request_received"
+		want := InvalidRequestEvent
 		assert.Equal(t, want, received.Action)
 	})
 
@@ -104,11 +63,11 @@ func TestSockChatWS(t *testing.T) {
 		ws.Write(t, request)
 
 		received := <-ws.MessageStash
-		want := "channel_joined"
-		require.Equal(t, received.Action, want)
+		want := UserJoinedChannelEvent
+		require.Equal(t, want, received.Action)
 		details := UnmarshalChannelUserChangeEvent(received.Payload)
-		assert.Equal(t, details.Channel, ChannelWithoutUser)
-		assert.Equal(t, details.Nick, ValidUserNick)
+		assert.Equal(t, ChannelWithoutUser, details.Channel)
+		assert.Equal(t, ValidUserNick, details.Nick)
 	})
 
 	t.Run("can leave a channel", func(t *testing.T) {
@@ -116,7 +75,7 @@ func TestSockChatWS(t *testing.T) {
 		ws.Write(t, request)
 
 		received := <-ws.MessageStash
-		want := "channel_left"
+		want := UserLeftChannelEvent
 		require.Equal(t, received.Action, want)
 		details := UnmarshalChannelUserChangeEvent(received.Payload)
 		assert.Equal(t, details.Channel, ChannelWithUser)
@@ -127,33 +86,27 @@ func TestSockChatWS(t *testing.T) {
 		request := NewSocketMessage(LeaveAction, ChannelRequest{Name: ChannelWithoutUser})
 		ws.Write(t, request)
 
-		received := <-ws.MessageStash
-		want := "invalid_request_received"
-		assert.Equal(t, want, received.Action)
+		ws.AssertEventReceivedWithin(t, InvalidRequestEvent, 200*time.Millisecond)
 	})
 
 	t.Run("can not join a channel they are already in", func(t *testing.T) {
 		request := NewSocketMessage(JoinAction, ChannelRequest{Name: ChannelWithUser})
 		ws.Write(t, request)
 
-		received := <-ws.MessageStash
-		want := "invalid_request_received"
-		assert.Equal(t, want, received.Action)
+		ws.AssertEventReceivedWithin(t, InvalidRequestEvent, 200*time.Millisecond)
 	})
 
 	t.Run("can not send a message to a channel being outside of", func(t *testing.T) {
 		request := NewSocketMessage(SendMessageAction, SendMessageRequest{"foo", ChannelWithoutUser})
 		ws.Write(t, request)
 
-		received := <-ws.MessageStash
-		want := "invalid_request_received"
-		assert.Equal(t, want, received.Action)
+		ws.AssertEventReceivedWithin(t, InvalidRequestEvent, 200*time.Millisecond)
 
 	})
 
 	t.Run("unauthorized connection times out", func(t *testing.T) {
 		new_ws := NewTestWS(t, wsURL)
-		within(t, testTimeoutUnauthorized+20*time.Millisecond, func() { received := <-new_ws.MessageStash; assert.Equal(t, received.Action, "connection_timed_out") })
+		new_ws.AssertEventReceivedWithin(t, "connection_timed_out", testTimeoutUnauthorized+20*time.Millisecond)
 	})
 
 	t.Run("connection timeout period is extended after logging in", func(t *testing.T) {
@@ -175,30 +128,13 @@ func TestSockChatWS(t *testing.T) {
 
 }
 
-func within(t testing.TB, d time.Duration, assert func()) {
-	t.Helper()
-
-	done := make(chan struct{}, 1)
-
-	go func() {
-		assert()
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-time.After(d):
-		t.Error("timed out")
-	case <-done:
-	}
-}
-
 func TestSockChatHTTP(t *testing.T) {
-	store, _ := NewSockChatStore()
-	users := userStoreDouble{}
-	server := NewSockChatServer(store, &users)
+	channelStore, _ := NewChannelStore()
+	users := &userStoreDouble{}
+	server := NewSockChatServer(channelStore, users)
 
 	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
-		request := newRegisterRequest(UserRequest{Nick: "Foo", Password: "Bar420"})
+		request := newRegisterRequest(UserProfile{Nick: "Foo", Password: "Bar420"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -207,7 +143,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can not register a new user with missing required data", func(t *testing.T) {
-		missingDataTests := []UserRequest{{Nick: "Foo"},
+		missingDataTests := []UserProfile{{Nick: "Foo"},
 			{Password: "Bar42"}}
 		for _, tt := range missingDataTests {
 			request := newRegisterRequest(tt)
@@ -221,7 +157,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("returns 409 on already existing nick", func(t *testing.T) {
-		request := newRegisterRequest(UserRequest{Nick: "already_exists", Password: "Bar420"})
+		request := newRegisterRequest(UserProfile{Nick: "already_exists", Password: "Bar420"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -230,7 +166,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
-		request := newEditProfileRequest(UserRequest{Nick: ValidUserNick, Description: "D3scription", Password: ValidUserPassword})
+		request := newEditProfileRequest(UserProfile{Nick: ValidUserNick, Description: "D3scription", Password: ValidUserPassword})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -239,7 +175,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("returns 401 on invalid password", func(t *testing.T) {
-		request := newEditProfileRequest(UserRequest{Nick: "Foo", Description: "D3scription", Password: "fishyPassword"})
+		request := newEditProfileRequest(UserProfile{Nick: "Foo", Description: "D3scription", Password: "fishyPassword"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -248,13 +184,13 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 }
 
-func newRegisterRequest(b UserRequest) *http.Request {
+func newRegisterRequest(b UserProfile) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodGet, "/register", bytes.NewBuffer(requestBytes))
 	return req
 }
 
-func newEditProfileRequest(b UserRequest) *http.Request {
+func newEditProfileRequest(b UserProfile) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodGet, "/edit_profile", bytes.NewBuffer(requestBytes))
 	return req
