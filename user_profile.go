@@ -15,11 +15,11 @@ const (
 	CouldNotUpdateUserMsg = "sorry, an error occured and your account could not be updated"
 )
 
-type UserService struct {
+type ProfileService struct {
 	store storage.UserStore
 }
 
-func (s *UserService) CreateUser(ctx context.Context, u *UserRequest) error {
+func (s *ProfileService) Create(ctx context.Context, u *UserProfile) error {
 	if u.Password == "" {
 		return fmt.Errorf("password is required")
 	}
@@ -44,8 +44,8 @@ func (s *UserService) CreateUser(ctx context.Context, u *UserRequest) error {
 	return nil
 }
 
-func (s *UserService) EditUser(ctx context.Context, u *UserRequest) error {
-	if !s.isAuthValid(ctx, u.Nick, u.Password) {
+func (s *ProfileService) Edit(ctx context.Context, u *UserProfile) error {
+	if !s.IsAuthValid(ctx, u.Nick, u.Password) {
 		return errors.Unauthorized
 	}
 
@@ -59,19 +59,8 @@ func (s *UserService) EditUser(ctx context.Context, u *UserRequest) error {
 	return nil
 }
 
-func (s *UserService) LoginUser(ctx context.Context, nick, password string) error {
-	if !s.isAuthValid(ctx, nick, password) {
-		return errors.Unauthorized
-	}
-
-	return nil
-}
-
-func (s *UserService) isAuthValid(ctx context.Context, nick, password string) bool {
-	if password == "" {
-		return false
-	}
-	if nick == "" {
+func (s *ProfileService) IsAuthValid(ctx context.Context, nick, password string) bool {
+	if nick == "" || password == "" {
 		return false
 	}
 	userData, err := s.store.SelectUser(ctx, nick)

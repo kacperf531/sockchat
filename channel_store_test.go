@@ -2,12 +2,14 @@ package sockchat
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestSockChatStore(t *testing.T) {
+func TestChannelStore(t *testing.T) {
 
-	dummyUser := SockChatWS{}
-	store, _ := NewSockChatStore()
+	dummyUser := UserHandler{}
+	store, _ := NewChannelStore()
 
 	t.Run("returns error on nonexistent channel", func(t *testing.T) {
 		_, err := store.GetChannel("Foo420")
@@ -32,15 +34,26 @@ func TestSockChatStore(t *testing.T) {
 		}
 	})
 
+	t.Run("can not create channel without name", func(t *testing.T) {
+		err := store.CreateChannel("")
+		assert.EqualError(t, err, ErrEmptyChannelName.Error())
+	})
+
+	t.Run("can not join channel without providing name", func(t *testing.T) {
+		err := store.AddUserToChannel("", &dummyUser)
+		assert.EqualError(t, err, ErrEmptyChannelName.Error())
+	})
+
+	t.Run("can not leave channel without providing name", func(t *testing.T) {
+		err := store.RemoveUserFromChannel("", &dummyUser)
+		assert.EqualError(t, err, ErrEmptyChannelName.Error())
+	})
+
 	t.Run("can add user to channel", func(t *testing.T) {
 		store.CreateChannel("Bar")
 		store.AddUserToChannel("Bar", &dummyUser)
 
-		got := store.ChannelHasUser("Bar", &dummyUser)
-		want := true
-		if got != want {
-			t.Error("User should be present in requested channel")
-		}
+		assert.True(t, ChannelHasMember(store, "Bar", &dummyUser))
 	})
 
 	t.Run("can remove user from a channel", func(t *testing.T) {
@@ -48,31 +61,21 @@ func TestSockChatStore(t *testing.T) {
 		store.AddUserToChannel("Baz", &dummyUser)
 		store.RemoveUserFromChannel("Baz", &dummyUser)
 
-		got := store.ChannelHasUser("Baz", &dummyUser)
-		want := false
-		if got != want {
-			t.Error("User should not be present in requested channel (they were removed)")
-		}
-	})
-
-	t.Run("Handle user's disconnection", func(t *testing.T) {
-		store.CreateChannel("Baz")
-		store.AddUserToChannel("Baz", &dummyUser)
-		store.DisconnectUser(&dummyUser)
-
-		got := store.ChannelHasUser("Bar", &dummyUser)
-		want := false
-		if got != want {
-			t.Error("User should not be present in requested channel (they were disconnected)")
-		}
+		assert.True(t, ChannelHasMember(store, "Bar", &dummyUser))
 	})
 
 }
 
-func AssertChannelExists(t *testing.T, store ChannelStore, channel string) {
+func AssertChannelExists(t *testing.T, store *ChannelStore, channel string) {
 	t.Helper()
 	_, err := store.GetChannel(channel)
 	if err != nil {
 		t.Errorf("channel %s does not exist", channel)
 	}
+}
+
+func ChannelHasMember(store *ChannelStore, channelName string, member *UserHandler) bool {
+	channel, _ := store.GetChannel(channelName)
+	_, exists := channel.members[member]
+	return exists
 }
