@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 const (
@@ -44,13 +46,6 @@ type ChannelUserChangeEvent struct {
 type SendMessageRequest struct {
 	Channel string `json:"channel"`
 	Text    string `json:"text"`
-}
-
-// For messages sent from server
-type MessageEvent struct {
-	Text    string `json:"text"`
-	Channel string `json:"channel"`
-	Author  string `json:"author"`
 }
 
 // For create & edit profile web API requests
@@ -96,8 +91,8 @@ func UnmarshalMessageRequest(requestBytes json.RawMessage) (*SendMessageRequest,
 	return &messageRequest, nil
 }
 
-func UnmarshalMessageEvent(requestBytes json.RawMessage) *MessageEvent {
-	messageEvent := MessageEvent{}
+func UnmarshalMessageEvent(requestBytes json.RawMessage) *common.MessageEvent {
+	messageEvent := common.MessageEvent{}
 	if err := json.Unmarshal(requestBytes, &messageEvent); err != nil {
 		log.Printf("error while unmarshaling request for sending message: %v", err)
 		return nil

@@ -9,6 +9,26 @@ services:
       - mysql:/var/lib/mysql
     ports:
       - 33060:3306
+      
+  sockchat_redis:
+    image: 'redis:7'
+    ports:
+      - "6379:6379"
+    command: redis-server --save 20 1 --loglevel debug
+    volumes:
+      - ./data/redis:/data
+
+  sockchat_elasticsearch:
+    image: 'elasticsearch:7.17.9'
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: "single-node"
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
 
 volumes:
   mysql:
+version: '3'
+
+

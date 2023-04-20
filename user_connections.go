@@ -3,6 +3,8 @@ package sockchat
 import (
 	"log"
 	"sync"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 // SockchatUserHandler manages user actions
@@ -121,7 +123,7 @@ func (u *UserHandler) HandleRequests() {
 				continue
 			}
 			req.errCallback <- err
-			channel.MessageMembers(NewSocketMessage(NewMessageEvent, MessageEvent{req.payload.(*SendMessageRequest).Text, req.payload.(*SendMessageRequest).Channel, u.getNick()}))
+			channel.MessageMembers(NewSocketMessage(NewMessageEvent, common.MessageEvent{Text: req.payload.(*SendMessageRequest).Text, Channel: req.payload.(*SendMessageRequest).Channel, Author: u.getNick()}))
 		}
 	}
 }

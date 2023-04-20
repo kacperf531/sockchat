@@ -9,7 +9,7 @@ import (
 	"github.com/VividCortex/mysqlerr"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/kacperf531/sockchat/errors"
+	"github.com/kacperf531/sockchat/common"
 )
 
 type UserStore interface {
@@ -41,7 +41,7 @@ func (s *userStore) InsertUser(ctx context.Context, u *User) error {
 	if err != nil {
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			if driverErr.Number == mysqlerr.ER_DUP_ENTRY {
-				return errors.ResourceConflict
+				return common.ErrResourceConflict
 			}
 		}
 		return fmt.Errorf("could not insert row: %w", err)

@@ -1,12 +1,13 @@
-package main
+package sockchat
 
 import (
 	"context"
 	"fmt"
+
 	"github.com/redis/go-redis/v9"
 )
 
-func testRedisConnection() {
+func TestRedisConnection() {
 	fmt.Print("\n###############################\n")
 	fmt.Print("# Testing Redis connection... #\n")
 	fmt.Print("###############################\n")

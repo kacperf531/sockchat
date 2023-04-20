@@ -12,6 +12,8 @@ import (
 )
 
 func main() {
+	sockchat.TestRedisConnection()
+	sockchat.TestElasticSearchConnection()
 
 	godotenv.Load("../.env")
 	log.SetFlags(log.Ldate | log.Ltime | log.Llongfile)

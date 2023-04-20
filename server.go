@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/kacperf531/sockchat/errors"
+	"github.com/kacperf531/sockchat/common"
 	"github.com/kacperf531/sockchat/storage"
 )
 
@@ -160,7 +160,7 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	err = s.userProfiles.Create(ctx, &userData)
 	if err != nil {
-		if err == errors.ResourceConflict {
+		if err == common.ErrResourceConflict {
 			w.WriteHeader(http.StatusConflict)
 		} else {
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -188,7 +188,7 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	err = s.userProfiles.Edit(ctx, &userData)
 	if err != nil {
-		if err == errors.Unauthorized {
+		if err == common.ErrUnauthorized {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
