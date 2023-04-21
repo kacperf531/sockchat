@@ -19,7 +19,7 @@ type ProfileService struct {
 	store storage.UserStore
 }
 
-func (s *ProfileService) Create(ctx context.Context, u *UserProfile) error {
+func (s *ProfileService) Create(ctx context.Context, u *CreateProfileRequest) error {
 	if u.Password == "" {
 		return fmt.Errorf("password is required")
 	}
@@ -44,11 +44,7 @@ func (s *ProfileService) Create(ctx context.Context, u *UserProfile) error {
 	return nil
 }
 
-func (s *ProfileService) Edit(ctx context.Context, u *UserProfile) error {
-	if !s.IsAuthValid(ctx, u.Nick, u.Password) {
-		return common.ErrUnauthorized
-	}
-
+func (s *ProfileService) Edit(ctx context.Context, u *CreateProfileRequest) error {
 	userEntry := storage.User{Nick: u.Nick, Description: u.Description}
 
 	err := s.store.UpdateUser(ctx, &userEntry)

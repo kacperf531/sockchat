@@ -40,8 +40,8 @@ type SockchatChannelStore interface {
 
 // SockchatProfileStore manages DB-stored user profiles
 type SockchatProfileStore interface {
-	Create(ctx context.Context, u *UserProfile) error
-	Edit(ctx context.Context, u *UserProfile) error
+	Create(ctx context.Context, u *CreateProfileRequest) error
+	Edit(ctx context.Context, u *CreateProfileRequest) error
 	IsAuthValid(ctx context.Context, nick, password string) bool
 }
 
@@ -152,7 +152,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
-	userData := UserProfile{}
+	userData := CreateProfileRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("error reading register request: %v", err)
@@ -180,7 +180,8 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
-	userData := UserProfile{}
+	s.authorizeHTTPRequest(w, r)
+	userData := CreateProfileRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("error reading register request: %v", err)
@@ -197,10 +198,6 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	err = s.userProfiles.Edit(ctx, &userData)
 	if err != nil {
-		if err == common.ErrUnauthorized {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		return
 	}
@@ -209,18 +206,7 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
-	r.BasicAuth()
-	username, password, ok := r.BasicAuth()
-	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
-	defer cancel()
-	if !s.userProfiles.IsAuthValid(ctx, username, password) {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	s.authorizeHTTPRequest(w, r)
 	channelName := r.URL.Query().Get("channel")
 	messages, err := s.messageStore.GetMessagesByChannel(channelName)
 	if err != nil {
@@ -255,6 +241,20 @@ func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 		s.authorizedUsers.RemoveConnection(conn)
 	}
 	conn.Close()
+}
+
+func (s *SockchatServer) authorizeHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+	defer cancel()
+	if !s.userProfiles.IsAuthValid(ctx, username, password) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 }
 
 type SockChatWS struct {

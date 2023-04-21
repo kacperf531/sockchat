@@ -139,7 +139,7 @@ func TestSockChatHTTP(t *testing.T) {
 	server := NewSockChatServer(channelStore, users, messageStore)
 
 	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
-		request := newRegisterRequest(UserProfile{Nick: "Foo", Password: "Bar420"})
+		request := newRegisterRequest(CreateProfileRequest{Nick: "Foo", Password: "Bar420"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -148,7 +148,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can not register a new user with missing required data", func(t *testing.T) {
-		missingDataTests := []UserProfile{{Nick: "Foo"},
+		missingDataTests := []CreateProfileRequest{{Nick: "Foo"},
 			{Password: "Bar42"}}
 		for _, tt := range missingDataTests {
 			request := newRegisterRequest(tt)
@@ -162,7 +162,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("returns 409 on already existing nick", func(t *testing.T) {
-		request := newRegisterRequest(UserProfile{Nick: "already_exists", Password: "Bar420"})
+		request := newRegisterRequest(CreateProfileRequest{Nick: "already_exists", Password: "Bar420"})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -171,7 +171,8 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
-		request := newEditProfileRequest(UserProfile{Nick: ValidUserNick, Description: "D3scription", Password: ValidUserPassword})
+		request := newEditProfileRequest(EditProfileRequest{Description: "D3scription"})
+		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -180,7 +181,8 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("returns 401 on invalid password", func(t *testing.T) {
-		request := newEditProfileRequest(UserProfile{Nick: "Foo", Description: "D3scription", Password: "fishyPassword"})
+		request := newEditProfileRequest(EditProfileRequest{Description: "D3scription"})
+		request.SetBasicAuth(ValidUserNick, "fishyPassword")
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -189,7 +191,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("returns error for unauthorized request to channel history", func(t *testing.T) {
-		request := newChannelHistoryRequest(ChannelWithUser, ValidUserNick, "fishyPassword")
+		request := newChannelHistoryRequest(ChannelWithUser)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -198,7 +200,8 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("returns messages history", func(t *testing.T) {
-		request := newChannelHistoryRequest(ChannelWithUser, ValidUserNick, ValidUserPassword)
+		request := newChannelHistoryRequest(ChannelWithUser)
+		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -209,20 +212,19 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 }
 
-func newRegisterRequest(b UserProfile) *http.Request {
+func newRegisterRequest(b CreateProfileRequest) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(requestBytes))
 	return req
 }
 
-func newEditProfileRequest(b UserProfile) *http.Request {
+func newEditProfileRequest(b EditProfileRequest) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodPost, "/edit_profile", bytes.NewBuffer(requestBytes))
 	return req
 }
 
-func newChannelHistoryRequest(channel, username, password string) *http.Request {
+func newChannelHistoryRequest(channel string) *http.Request {
 	req, _ := http.NewRequest(http.MethodGet, "/history?channel="+channel, nil)
-	req.SetBasicAuth(username, password)
 	return req
 }

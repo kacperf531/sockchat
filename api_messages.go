@@ -48,10 +48,13 @@ type SendMessageRequest struct {
 	Text    string `json:"text"`
 }
 
-// For create & edit profile web API requests
-type UserProfile struct {
+type CreateProfileRequest struct {
 	Nick        string `json:"nick"`
 	Password    string `json:"password"`
+	Description string `json:"description"`
+}
+
+type EditProfileRequest struct {
 	Description string `json:"description"`
 }
 
