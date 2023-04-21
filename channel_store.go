@@ -1,9 +1,12 @@
 package sockchat
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 var ErrChannelDoesNotExist = errors.New("channel does not exist")
@@ -12,12 +15,13 @@ var ErrUserAlreadyInChannel = errors.New("user is already member of this channel
 var ErrEmptyChannelName = errors.New("channel's `name` is missing")
 
 type ChannelStore struct {
-	Channels map[string]*Channel
-	lock     sync.RWMutex
+	Channels     map[string]*Channel
+	lock         sync.RWMutex
+	messageStore SockchatMessageStore
 }
 
-func NewChannelStore() (*ChannelStore, error) {
-	return &ChannelStore{Channels: make(map[string]*Channel)}, nil
+func NewChannelStore(messageStore SockchatMessageStore) (*ChannelStore, error) {
+	return &ChannelStore{Channels: make(map[string]*Channel), messageStore: messageStore}, nil
 }
 
 func (s *ChannelStore) GetChannel(name string) (*Channel, error) {
@@ -39,7 +43,7 @@ func (s *ChannelStore) CreateChannel(channelName string) error {
 	if s.Channels[channelName] != nil {
 		return fmt.Errorf("channel `%s` already exists", channelName)
 	}
-	s.Channels[channelName] = &Channel{members: make(map[SockchatUserHandler]bool)}
+	s.Channels[channelName] = &Channel{members: make(map[SockchatUserHandler]bool), messageStore: s.messageStore}
 	return nil
 }
 
@@ -89,8 +93,9 @@ func (s *ChannelStore) DisconnectUser(user SockchatUserHandler) {
 }
 
 type Channel struct {
-	members map[SockchatUserHandler]bool
-	lock    sync.RWMutex
+	members      map[SockchatUserHandler]bool
+	lock         sync.RWMutex
+	messageStore SockchatMessageStore
 }
 
 func (c *Channel) AddMember(user SockchatUserHandler) {
@@ -121,7 +126,13 @@ func (c *Channel) HasMember(user SockchatUserHandler) bool {
 }
 
 func (c *Channel) MessageMembers(message SocketMessage) {
-	// TODO write message to ES here
+	// to be refactored
+	if message.Action == NewMessageEvent {
+		storedMessage := &common.MessageEvent{}
+		json.Unmarshal(message.Payload, storedMessage)
+		c.messageStore.IndexMessage(storedMessage)
+	}
+
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	for user := range c.members {

@@ -14,12 +14,13 @@ import (
 )
 
 func TestSockChatWS(t *testing.T) {
-	store := &StubChannelStore{Channels: map[string]*Channel{ChannelWithUser: {members: make(map[SockchatUserHandler]bool)}}}
+	channelStore := &StubChannelStore{Channels: map[string]*Channel{ChannelWithUser: {members: make(map[SockchatUserHandler]bool)}}}
+	messageStore := &messageStoreSpy{}
 	users := &userStoreDouble{}
 	testTimeoutUnauthorized := 200 * time.Millisecond
 	testTimeoutAuthorized := 20 * testTimeoutUnauthorized
 
-	server := NewSockChatServer(store, users)
+	server := NewSockChatServer(channelStore, users, messageStore)
 
 	server.SetTimeoutValues(testTimeoutAuthorized, testTimeoutUnauthorized)
 	testServer := httptest.NewServer(server)
@@ -31,7 +32,7 @@ func TestSockChatWS(t *testing.T) {
 
 	request := NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword})
 	handler, _ := server.authorizedUsers.GetHandler(ValidUserNick)
-	store.Channels[ChannelWithUser].AddMember(handler)
+	channelStore.Channels[ChannelWithUser].AddMember(handler)
 	ws.Write(t, request)
 
 	received := <-ws.MessageStash
@@ -129,9 +130,11 @@ func TestSockChatWS(t *testing.T) {
 }
 
 func TestSockChatHTTP(t *testing.T) {
-	channelStore, _ := NewChannelStore()
+	messageStore := &messageStoreSpy{}
+	channelStore, _ := NewChannelStore(messageStore)
 	users := &userStoreDouble{}
-	server := NewSockChatServer(channelStore, users)
+
+	server := NewSockChatServer(channelStore, users, messageStore)
 
 	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
 		request := newRegisterRequest(UserProfile{Nick: "Foo", Password: "Bar420"})

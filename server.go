@@ -45,6 +45,12 @@ type SockchatProfileStore interface {
 	IsAuthValid(ctx context.Context, nick, password string) bool
 }
 
+// SockchatMessageStore manages messages in ES
+type SockchatMessageStore interface {
+	IndexMessage(msg *common.MessageEvent) (string, error)
+	GetMessagesByChannel(channel string) ([]*common.MessageEvent, error)
+}
+
 // SockchatUserManager manages user handlers that store connections and send messages to them
 type SockchatUserManager interface {
 	AddConnection(conn *SockChatWS, nick string)
@@ -56,6 +62,7 @@ type SockchatServer struct {
 	http.Handler
 	channelStore        SockchatChannelStore
 	userProfiles        SockchatProfileStore
+	messageStore        SockchatMessageStore
 	authorizedUsers     SockchatUserManager
 	timeoutUnauthorized time.Duration
 	timeoutAuthorized   time.Duration
@@ -73,11 +80,12 @@ func NewErrorMessage(details string) SocketMessage {
 	return NewSocketMessage(InvalidRequestEvent, map[string]string{"details": details})
 }
 
-func NewSockChatServer(store SockchatChannelStore, userStore storage.UserStore) *SockchatServer {
+func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.UserStore, messageStore SockchatMessageStore) *SockchatServer {
 	s := new(SockchatServer)
-	s.channelStore = store
+	s.channelStore = channelStore
 	s.userProfiles = &ProfileService{store: userStore}
-	s.authorizedUsers = NewConnectedUsersPool(store)
+	s.messageStore = messageStore
+	s.authorizedUsers = NewConnectedUsersPool(channelStore)
 
 	s.SetTimeoutValues(defaultTimeoutAuthorized, defaultTimeoutUnauthorized)
 

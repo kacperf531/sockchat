@@ -9,10 +9,12 @@ import (
 )
 
 func TestAuthorizedUserFlow(t *testing.T) {
-	store, _ := NewChannelStore()
-	store.CreateChannel("foo")
+	messageStore := &messageStoreSpy{}
+	channelStore, _ := NewChannelStore(messageStore)
+	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
-	server := httptest.NewServer(NewSockChatServer(store, users))
+
+	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore))
 	defer server.Close()
 
 	wsURL := GetWsURL(server.URL)
@@ -29,10 +31,12 @@ func TestAuthorizedUserFlow(t *testing.T) {
 }
 
 func TestMultipleConnectionsSync(t *testing.T) {
-	store, _ := NewChannelStore()
-	store.CreateChannel("foo")
+	messageStore := &messageStoreSpy{}
+	channelStore, _ := NewChannelStore(messageStore)
+	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
-	server := httptest.NewServer(NewSockChatServer(store, users))
+
+	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore))
 	wsURL := GetWsURL(server.URL)
 
 	conns := make([]*TestWS, 2)
@@ -89,10 +93,11 @@ func TestMultipleConnectionsSync(t *testing.T) {
 
 func TestMultipleUsersSync(t *testing.T) {
 
-	store, _ := NewChannelStore()
-	store.CreateChannel("foo")
+	messageStore := &messageStoreSpy{}
+	channelStore, _ := NewChannelStore(messageStore)
+	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
-	server := httptest.NewServer(NewSockChatServer(store, users))
+	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore))
 	wsURL := GetWsURL(server.URL)
 
 	conns := make([]*TestWS, 2)

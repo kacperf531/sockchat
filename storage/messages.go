@@ -19,6 +19,10 @@ type MessageStore struct {
 	indexName string
 }
 
+func NewMessageStore(es *elasticsearch.Client, indexName string) *MessageStore {
+	return &MessageStore{es, indexName}
+}
+
 func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
 	var (
 		buf bytes.Buffer

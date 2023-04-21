@@ -3,13 +3,16 @@ package sockchat
 import (
 	"testing"
 
+	"github.com/kacperf531/sockchat/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestChannelStore(t *testing.T) {
 
 	dummyUser := UserHandler{}
-	store, _ := NewChannelStore()
+	messageStoreSpy := &messageStoreSpy{}
+	store, _ := NewChannelStore(messageStoreSpy)
 
 	t.Run("returns error on nonexistent channel", func(t *testing.T) {
 		_, err := store.GetChannel("Foo420")
@@ -62,6 +65,13 @@ func TestChannelStore(t *testing.T) {
 		store.RemoveUserFromChannel("Baz", &dummyUser)
 
 		assert.True(t, ChannelHasMember(store, "Bar", &dummyUser))
+	})
+
+	t.Run("Channel stores messages from users", func(t *testing.T) {
+		store.CreateChannel("Qux")
+		channel, _ := store.GetChannel("Qux")
+		channel.MessageMembers(NewSocketMessage(NewMessageEvent, common.MessageEvent{Text: "hello", Channel: "Qux", Author: "dummyUser"}))
+		require.Equal(t, 1, messageStoreSpy.indexMessageCalls)
 	})
 
 }

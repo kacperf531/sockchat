@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kacperf531/sockchat/common"
 )
 
 const (
@@ -122,4 +123,19 @@ func (store *StubChannelStore) RemoveUserFromChannel(name string, user SockchatU
 	}
 	user.Write(NewSocketMessage(UserLeftChannelEvent, ChannelUserChangeEvent{name, user.getNick()}))
 	return nil
+}
+
+type messageStoreSpy struct {
+	getMessagesCalls  int
+	indexMessageCalls int
+}
+
+func (s *messageStoreSpy) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
+	s.getMessagesCalls++
+	return nil, nil
+}
+
+func (s *messageStoreSpy) IndexMessage(*common.MessageEvent) (string, error) {
+	s.indexMessageCalls++
+	return "", nil
 }
