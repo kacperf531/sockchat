@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kacperf531/sockchat/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -130,7 +131,8 @@ func TestSockChatWS(t *testing.T) {
 }
 
 func TestSockChatHTTP(t *testing.T) {
-	messageStore := &messageStoreSpy{}
+	sampleMessage := common.MessageEvent{Text: "foo", Channel: "bar", Author: "baz"}
+	messageStore := &messageStoreStub{messages: []*common.MessageEvent{&sampleMessage}}
 	channelStore, _ := NewChannelStore(messageStore)
 	users := &userStoreDouble{}
 
@@ -186,29 +188,41 @@ func TestSockChatHTTP(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, response.Code)
 	})
 
-	t.Run("returns messages for a channel", func(t *testing.T) {
-		request := newChannelHistoryRequest(ChannelWithUser)
+	t.Run("returns error for unauthorized request to channel history", func(t *testing.T) {
+		request := newChannelHistoryRequest(ChannelWithUser, ValidUserNick, "fishyPassword")
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusUnauthorized, response.Code)
+	})
+
+	t.Run("returns messages history", func(t *testing.T) {
+		request := newChannelHistoryRequest(ChannelWithUser, ValidUserNick, ValidUserPassword)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
 
 		require.Equal(t, http.StatusOK, response.Code)
+		sampleMessageBytes, _ := json.Marshal(sampleMessage)
+		assert.Contains(t, response.Body.String(), string(sampleMessageBytes))
 	})
 }
 
 func newRegisterRequest(b UserProfile) *http.Request {
 	requestBytes, _ := json.Marshal(b)
-	req, _ := http.NewRequest(http.MethodGet, "/register", bytes.NewBuffer(requestBytes))
+	req, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(requestBytes))
 	return req
 }
 
 func newEditProfileRequest(b UserProfile) *http.Request {
 	requestBytes, _ := json.Marshal(b)
-	req, _ := http.NewRequest(http.MethodGet, "/edit_profile", bytes.NewBuffer(requestBytes))
+	req, _ := http.NewRequest(http.MethodPost, "/edit_profile", bytes.NewBuffer(requestBytes))
 	return req
 }
 
-func newChannelHistoryRequest(channel string) *http.Request {
-	req, _ := http.NewRequest(http.MethodGet, "/history", nil)
+func newChannelHistoryRequest(channel, username, password string) *http.Request {
+	req, _ := http.NewRequest(http.MethodGet, "/history?channel="+channel, nil)
+	req.SetBasicAuth(username, password)
 	return req
 }

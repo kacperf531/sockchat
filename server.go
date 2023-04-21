@@ -209,8 +209,19 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
+	r.BasicAuth()
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+	defer cancel()
+	if !s.userProfiles.IsAuthValid(ctx, username, password) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 	channelName := r.URL.Query().Get("channel")
-	// TODO ctx
 	messages, err := s.messageStore.GetMessagesByChannel(channelName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

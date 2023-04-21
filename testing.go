@@ -126,16 +126,33 @@ func (store *StubChannelStore) RemoveUserFromChannel(name string, user SockchatU
 }
 
 type messageStoreSpy struct {
-	getMessagesCalls  int
 	indexMessageCalls int
 }
 
 func (s *messageStoreSpy) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
-	s.getMessagesCalls++
 	return nil, nil
 }
 
 func (s *messageStoreSpy) IndexMessage(*common.MessageEvent) (string, error) {
 	s.indexMessageCalls++
+	return "", nil
+}
+
+type messageStoreStub struct {
+	messages []*common.MessageEvent
+	lock     sync.Mutex
+}
+
+func (s *messageStoreStub) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	// simplified stub - channel filtering & sorting logic is in ES
+	return s.messages, nil
+}
+
+func (s *messageStoreStub) IndexMessage(*common.MessageEvent) (string, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.messages = append(s.messages, &common.MessageEvent{})
 	return "", nil
 }
