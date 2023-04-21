@@ -185,6 +185,15 @@ func TestSockChatHTTP(t *testing.T) {
 
 		assert.Equal(t, http.StatusUnauthorized, response.Code)
 	})
+
+	t.Run("returns messages for a channel", func(t *testing.T) {
+		request := newChannelHistoryRequest(ChannelWithUser)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusOK, response.Code)
+	})
 }
 
 func newRegisterRequest(b UserProfile) *http.Request {
@@ -196,5 +205,10 @@ func newRegisterRequest(b UserProfile) *http.Request {
 func newEditProfileRequest(b UserProfile) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodGet, "/edit_profile", bytes.NewBuffer(requestBytes))
+	return req
+}
+
+func newChannelHistoryRequest(channel string) *http.Request {
+	req, _ := http.NewRequest(http.MethodGet, "/history", nil)
 	return req
 }

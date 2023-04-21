@@ -93,6 +93,7 @@ func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.User
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
 	router.Handle("/register", http.HandlerFunc(s.register))
 	router.Handle("/edit_profile", http.HandlerFunc(s.editProfile))
+	router.Handle("/history", http.HandlerFunc(s.getChannelHistory))
 	s.Handler = router
 
 	return s
@@ -205,6 +206,17 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 
+}
+
+func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
+	channelName := r.URL.Query().Get("channel")
+	// TODO ctx
+	messages, err := s.messageStore.GetMessagesByChannel(channelName)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(messages)
 }
 
 func (s *SockchatServer) authorizeConnection(request SocketMessage, conn *SockChatWS) error {
