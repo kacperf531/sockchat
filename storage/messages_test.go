@@ -3,6 +3,7 @@ package storage
 import (
 	"log"
 	"testing"
+	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/joho/godotenv"
@@ -21,7 +22,7 @@ func TestMessageStore(t *testing.T) {
 	store := &MessageStore{es, "test_messages"}
 
 	t.Run("can index new message into ES", func(t *testing.T) {
-		_, err := store.IndexMessage(&common.MessageEvent{Channel: "Foo", Author: "Bar", Text: "Baz"})
+		_, err := store.IndexMessage(&common.MessageEvent{Channel: "Foo", Author: "Bar", Text: "Baz", Timestamp: time.Now().Unix()})
 		require.NoError(t, err)
 	})
 

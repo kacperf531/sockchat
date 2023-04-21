@@ -29,6 +29,9 @@ func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEv
 		r   map[string]interface{}
 	)
 	query := map[string]interface{}{
+		"sort": []map[string]interface{}{{
+			"timestamp": map[string]string{
+				"order": "desc"}}},
 		"query": map[string]interface{}{
 			"match": map[string]interface{}{
 				"channel": channel,
