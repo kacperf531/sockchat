@@ -3,6 +3,7 @@ package sockchat
 import (
 	"log"
 	"sync"
+	"time"
 
 	"github.com/kacperf531/sockchat/common"
 )
@@ -118,12 +119,16 @@ func (u *UserHandler) HandleRequests() {
 			req.errCallback <- err
 		case SendMessageAction:
 			channel, err := u.channelStore.GetChannel(req.payload.(*SendMessageRequest).Channel)
-			if !channel.GetMembers()[u] {
+			if err != nil {
+				req.errCallback <- err
+				continue
+			}
+			if !channel.HasMember(u) {
 				req.errCallback <- ErrUserNotInChannel
 				continue
 			}
-			req.errCallback <- err
-			channel.MessageMembers(NewSocketMessage(NewMessageEvent, common.MessageEvent{Text: req.payload.(*SendMessageRequest).Text, Channel: req.payload.(*SendMessageRequest).Channel, Author: u.getNick()}))
+			req.errCallback <- nil
+			channel.MessageMembers(NewSocketMessage(NewMessageEvent, common.MessageEvent{Text: req.payload.(*SendMessageRequest).Text, Channel: req.payload.(*SendMessageRequest).Channel, Author: u.getNick(), Timestamp: time.Now().Unix()}))
 		}
 	}
 }

@@ -1,12 +1,9 @@
 package sockchat
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
-
-	"github.com/kacperf531/sockchat/common"
 )
 
 var ErrChannelDoesNotExist = errors.New("channel does not exist")
@@ -126,10 +123,8 @@ func (c *Channel) HasMember(user SockchatUserHandler) bool {
 }
 
 func (c *Channel) MessageMembers(message SocketMessage) {
-	// to be refactored
 	if message.Action == NewMessageEvent {
-		storedMessage := &common.MessageEvent{}
-		json.Unmarshal(message.Payload, storedMessage)
+		storedMessage := UnmarshalMessageEvent(message.Payload)
 		c.messageStore.IndexMessage(storedMessage)
 	}
 
