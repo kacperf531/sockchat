@@ -93,7 +93,7 @@ func TestMultipleConnectionsSync(t *testing.T) {
 
 func TestMultipleUsersSync(t *testing.T) {
 
-	messageStore := &messageStoreSpy{}
+	messageStore := &messageStoreStub{}
 	channelStore, _ := NewChannelStore(messageStore)
 	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
@@ -129,6 +129,23 @@ func TestMultipleUsersSync(t *testing.T) {
 		go conns[1].Write(t, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))
 		for _, conn := range conns {
 			conn.AssertEventReceivedWithin(t, UserJoinedChannelEvent, 2*time.Second)
+		}
+	})
+
+	t.Run("Two users can send message to the channel at the same time", func(t *testing.T) {
+		done := make(chan bool, 2)
+		go func() {
+			conns[0].Write(t, NewSocketMessage(SendMessageAction, SendMessageRequest{Channel: "foo", Text: "Bar"}))
+			conns[0].AssertEventReceivedWithin(t, NewMessageEvent, 2*time.Second)
+			done <- true
+		}()
+		go func() {
+			conns[1].Write(t, NewSocketMessage(SendMessageAction, SendMessageRequest{Channel: "foo", Text: "Baz"}))
+			conns[1].AssertEventReceivedWithin(t, NewMessageEvent, 2*time.Second)
+			done <- true
+		}()
+		for i := 0; i < 2; i++ {
+			<-done
 		}
 	})
 

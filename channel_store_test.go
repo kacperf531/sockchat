@@ -56,7 +56,7 @@ func TestChannelStore(t *testing.T) {
 		store.CreateChannel("Bar")
 		store.AddUserToChannel("Bar", &dummyUser)
 
-		assert.True(t, ChannelHasMember(store, "Bar", &dummyUser))
+		assert.True(t, store.IsUserPresentIn(&dummyUser, "Bar"))
 	})
 
 	t.Run("can remove user from a channel", func(t *testing.T) {
@@ -69,8 +69,8 @@ func TestChannelStore(t *testing.T) {
 
 	t.Run("Channel stores messages from users", func(t *testing.T) {
 		store.CreateChannel("Qux")
-		channel, _ := store.GetChannel("Qux")
-		channel.MessageMembers(NewSocketMessage(NewMessageEvent, common.MessageEvent{Text: "hello", Channel: "Qux", Author: "dummyUser"}))
+		store.MessageChannel("Qux", &common.MessageEvent{Channel: "Qux", Author: "Foo", Text: "Bar", Timestamp: 0})
+
 		require.Equal(t, 1, messageStoreSpy.indexMessageCalls)
 	})
 

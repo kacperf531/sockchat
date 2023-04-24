@@ -113,7 +113,7 @@ func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
 	return &Channel{}, nil
 }
 
-func (store *StubChannelStore) AddUserToChannel(name string, user SockchatUserHandler) error {
+func (s *StubChannelStore) AddUserToChannel(name string, user SockchatUserHandler) error {
 	if name == ChannelWithUser {
 		return ErrUserAlreadyInChannel
 	}
@@ -121,11 +121,19 @@ func (store *StubChannelStore) AddUserToChannel(name string, user SockchatUserHa
 	return nil
 }
 
-func (store *StubChannelStore) RemoveUserFromChannel(name string, user SockchatUserHandler) error {
+func (s *StubChannelStore) RemoveUserFromChannel(name string, user SockchatUserHandler) error {
 	if name == ChannelWithoutUser {
 		return ErrUserNotInChannel
 	}
 	user.Write(NewSocketMessage(UserLeftChannelEvent, ChannelUserChangeEvent{name, user.getNick()}))
+	return nil
+}
+
+func (s *StubChannelStore) IsUserPresentIn(user SockchatUserHandler, channel string) bool {
+	return false
+}
+
+func (store *StubChannelStore) MessageChannel(name string, message *common.MessageEvent) error {
 	return nil
 }
 
@@ -134,6 +142,10 @@ type messageStoreSpy struct {
 }
 
 func (s *messageStoreSpy) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
+	return nil, nil
+}
+
+func (s *messageStoreSpy) SearchMessagesInChannel(channel string, soughtPhrase string) ([]*common.MessageEvent, error) {
 	return nil, nil
 }
 
@@ -159,4 +171,9 @@ func (s *messageStoreStub) IndexMessage(*common.MessageEvent) (string, error) {
 	defer s.lock.Unlock()
 	s.messages = append(s.messages, &common.MessageEvent{})
 	return "", nil
+}
+
+func (s *messageStoreStub) SearchMessagesInChannel(channel string, soughtPhrase string) ([]*common.MessageEvent, error) {
+	// just assume that the results are filtered out
+	return nil, nil
 }

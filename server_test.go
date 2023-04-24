@@ -220,6 +220,19 @@ func TestSockChatHTTP(t *testing.T) {
 		sampleMessageBytes, _ := json.Marshal(sampleMessage)
 		assert.Contains(t, response.Body.String(), string(sampleMessageBytes))
 	})
+
+	t.Run("returns search results in the message history", func(t *testing.T) {
+		request := newChannelHistorySearchRequest(ChannelWithUser, "not_exists_in_history")
+		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		// Just checking if the results are filtered out (empty)
+		require.Equal(t, http.StatusOK, response.Code)
+		sampleMessageBytes, _ := json.Marshal(sampleMessage)
+		assert.NotContains(t, response.Body.String(), string(sampleMessageBytes))
+	})
 }
 
 func newRegisterRequest(b CreateProfileRequest) *http.Request {
@@ -236,5 +249,10 @@ func newEditProfileRequest(b EditProfileRequest) *http.Request {
 
 func newChannelHistoryRequest(channel string) *http.Request {
 	req, _ := http.NewRequest(http.MethodGet, "/history?channel="+channel, nil)
+	return req
+}
+
+func newChannelHistorySearchRequest(channel, soughtPhrase string) *http.Request {
+	req, _ := http.NewRequest(http.MethodGet, "/history?channel="+channel+"&search="+soughtPhrase, nil)
 	return req
 }

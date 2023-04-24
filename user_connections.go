@@ -118,17 +118,12 @@ func (u *UserHandler) HandleRequests() {
 			}
 			req.errCallback <- err
 		case SendMessageAction:
-			channel, err := u.channelStore.GetChannel(req.payload.(*SendMessageRequest).Channel)
-			if err != nil {
-				req.errCallback <- err
-				continue
-			}
-			if !channel.HasMember(u) {
+			reqFields := req.payload.(*SendMessageRequest)
+			if !u.channelStore.IsUserPresentIn(u, reqFields.Channel) {
 				req.errCallback <- ErrUserNotInChannel
 				continue
 			}
-			req.errCallback <- nil
-			channel.MessageMembers(NewSocketMessage(NewMessageEvent, common.MessageEvent{Text: req.payload.(*SendMessageRequest).Text, Channel: req.payload.(*SendMessageRequest).Channel, Author: u.getNick(), Timestamp: time.Now().Unix()}))
+			req.errCallback <- u.channelStore.MessageChannel(reqFields.Channel, &common.MessageEvent{Text: reqFields.Text, Author: u.getNick(), Timestamp: time.Now().Unix()})
 		}
 	}
 }

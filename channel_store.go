@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 var ErrChannelDoesNotExist = errors.New("channel does not exist")
@@ -40,7 +42,7 @@ func (s *ChannelStore) CreateChannel(channelName string) error {
 	if s.Channels[channelName] != nil {
 		return fmt.Errorf("channel `%s` already exists", channelName)
 	}
-	s.Channels[channelName] = &Channel{members: make(map[SockchatUserHandler]bool), messageStore: s.messageStore}
+	s.Channels[channelName] = &Channel{members: make(map[SockchatUserHandler]bool)}
 	return nil
 }
 
@@ -95,10 +97,25 @@ func (s *ChannelStore) ChannelExists(channelName string) bool {
 	return s.Channels[channelName] != nil
 }
 
+func (s *ChannelStore) IsUserPresentIn(user SockchatUserHandler, channel string) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.Channels[channel].HasMember(user)
+}
+
+func (s *ChannelStore) MessageChannel(channelName string, message *common.MessageEvent) error {
+	s.messageStore.IndexMessage(message)
+	channel, err := s.GetChannel(channelName)
+	if err != nil {
+		return err
+	}
+	go channel.MessageMembers(NewSocketMessage(NewMessageEvent, message))
+	return nil
+}
+
 type Channel struct {
-	members      map[SockchatUserHandler]bool
-	lock         sync.RWMutex
-	messageStore SockchatMessageStore
+	members map[SockchatUserHandler]bool
+	lock    sync.RWMutex
 }
 
 func (c *Channel) AddMember(user SockchatUserHandler) {
@@ -129,11 +146,6 @@ func (c *Channel) HasMember(user SockchatUserHandler) bool {
 }
 
 func (c *Channel) MessageMembers(message SocketMessage) {
-	if message.Action == NewMessageEvent {
-		storedMessage := UnmarshalMessageEvent(message.Payload)
-		c.messageStore.IndexMessage(storedMessage)
-	}
-
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	for user := range c.members {

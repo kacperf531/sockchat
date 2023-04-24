@@ -35,7 +35,9 @@ type SockchatChannelStore interface {
 	CreateChannel(name string) error
 	AddUserToChannel(channel string, user SockchatUserHandler) error
 	RemoveUserFromChannel(channel string, user SockchatUserHandler) error
+	MessageChannel(channel string, msg *common.MessageEvent) error
 	DisconnectUser(user SockchatUserHandler)
+	IsUserPresentIn(user SockchatUserHandler, channel string) bool
 	ChannelExists(name string) bool
 }
 
@@ -50,6 +52,7 @@ type SockchatProfileStore interface {
 type SockchatMessageStore interface {
 	IndexMessage(msg *common.MessageEvent) (string, error)
 	GetMessagesByChannel(channel string) ([]*common.MessageEvent, error)
+	SearchMessagesInChannel(channel, query string) ([]*common.MessageEvent, error)
 }
 
 // SockchatUserManager manages user handlers that store connections and send messages to them
@@ -209,6 +212,7 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
 	s.authorizeHTTPRequest(w, r)
 	channelName := r.URL.Query().Get("channel")
+	soughtPhrase := r.URL.Query().Get("search")
 	if channelName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -217,7 +221,13 @@ func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	messages, err := s.messageStore.GetMessagesByChannel(channelName)
+	var messages []*common.MessageEvent
+	var err error
+	if soughtPhrase == "" {
+		messages, err = s.messageStore.GetMessagesByChannel(channelName)
+	} else {
+		messages, err = s.messageStore.SearchMessagesInChannel(channelName, soughtPhrase)
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

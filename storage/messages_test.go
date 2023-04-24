@@ -34,7 +34,7 @@ func TestMessageStore(t *testing.T) {
 
 	t.Run("can search messages in channel by phrase", func(t *testing.T) {
 		// positive case
-		messages, err := store.SearchMessagesInChannel("Foo", "Baz")
+		messages, err := store.SearchMessagesInChannel("Foo", "Ba")
 		require.NoError(t, err)
 		require.NotEmpty(t, messages)
 

@@ -45,17 +45,17 @@ func searchMessagesInChannelQuery(channel, soughtPhrase string) map[string]inter
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
 					{
-						"match": map[string]interface{}{
-							"channel": map[string]string{
-								"query":    channel,
-								"operator": "and",
+						"term": map[string]interface{}{
+							"channel.keyword": map[string]string{
+								"value": channel,
 							},
 						},
 					},
 					{
-						"match": map[string]interface{}{
-							"text": map[string]string{
-								"query": soughtPhrase,
+						"query_string": map[string]interface{}{
+							"query": fmt.Sprintf("*%s*", soughtPhrase),
+							"fields": []string{
+								"text",
 							},
 						},
 					},
