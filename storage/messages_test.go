@@ -26,9 +26,21 @@ func TestMessageStore(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("can get a messages by channel", func(t *testing.T) {
+	t.Run("can get messages by channel", func(t *testing.T) {
 		messages, err := store.GetMessagesByChannel("Foo")
 		require.NoError(t, err)
 		require.NotEmpty(t, messages)
+	})
+
+	t.Run("can search messages in channel by phrase", func(t *testing.T) {
+		// positive case
+		messages, err := store.SearchMessagesInChannel("Foo", "Baz")
+		require.NoError(t, err)
+		require.NotEmpty(t, messages)
+
+		// negative case
+		messages, err = store.SearchMessagesInChannel("Foo", "Qux")
+		require.NoError(t, err)
+		require.Empty(t, messages)
 	})
 }

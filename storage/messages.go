@@ -23,26 +23,57 @@ func NewMessageStore(es *elasticsearch.Client, indexName string) *MessageStore {
 	return &MessageStore{es, indexName}
 }
 
-func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
-	var (
-		buf bytes.Buffer
-		r   map[string]interface{}
-	)
-	query := map[string]interface{}{
+func getAllMessagesInChannelQuery(channel string) map[string]interface{} {
+	return map[string]interface{}{
 		"sort": []map[string]interface{}{{
 			"timestamp": map[string]string{
 				"order": "desc"}}},
 		"query": map[string]interface{}{
-			"match": map[string]interface{}{
+			"match": map[string]string{
 				"channel": channel,
 			},
 		},
 	}
+}
+
+func searchMessagesInChannelQuery(channel, soughtPhrase string) map[string]interface{} {
+	return map[string]interface{}{
+		"sort": []map[string]interface{}{{
+			"timestamp": map[string]string{
+				"order": "desc"}}},
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{
+						"match": map[string]interface{}{
+							"channel": map[string]string{
+								"query":    channel,
+								"operator": "and",
+							},
+						},
+					},
+					{
+						"match": map[string]interface{}{
+							"text": map[string]string{
+								"query": soughtPhrase,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (s *MessageStore) runSearchQuery(query map[string]interface{}) ([]*common.MessageEvent, error) {
+	var (
+		buf bytes.Buffer
+		r   map[string]interface{}
+	)
 	if err := json.NewEncoder(&buf).Encode(query); err != nil {
 		log.Fatalf("Error encoding query: %s", err)
 	}
 
-	// Perform the search request.
 	res, err := s.es.Search(
 		s.es.Search.WithContext(context.Background()),
 		s.es.Search.WithIndex(s.indexName),
@@ -60,7 +91,6 @@ func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEv
 		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
 			log.Fatalf("Error parsing the response body: %s", err)
 		} else {
-			// Print the response status and error information.
 			log.Fatalf(
 				"[%s] %s: %s",
 				res.Status(),
@@ -85,6 +115,14 @@ func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEv
 	}
 
 	return results, nil
+}
+
+func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
+	return s.runSearchQuery(getAllMessagesInChannelQuery(channel))
+}
+
+func (s *MessageStore) SearchMessagesInChannel(channel, phrase string) ([]*common.MessageEvent, error) {
+	return s.runSearchQuery(searchMessagesInChannelQuery(channel, phrase))
 }
 
 func (s *MessageStore) IndexMessage(msg *common.MessageEvent) (string, error) {
