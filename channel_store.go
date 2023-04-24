@@ -89,6 +89,12 @@ func (s *ChannelStore) DisconnectUser(user SockchatUserHandler) {
 	}
 }
 
+func (s *ChannelStore) ChannelExists(channelName string) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.Channels[channelName] != nil
+}
+
 type Channel struct {
 	members      map[SockchatUserHandler]bool
 	lock         sync.RWMutex

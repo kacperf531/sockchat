@@ -133,7 +133,7 @@ func TestSockChatWS(t *testing.T) {
 func TestSockChatHTTP(t *testing.T) {
 	sampleMessage := common.MessageEvent{Text: "foo", Channel: "bar", Author: "baz"}
 	messageStore := &messageStoreStub{messages: []*common.MessageEvent{&sampleMessage}}
-	channelStore, _ := NewChannelStore(messageStore)
+	channelStore := &StubChannelStore{make(map[string]*Channel)}
 	users := &userStoreDouble{}
 
 	server := NewSockChatServer(channelStore, users, messageStore)
@@ -197,6 +197,16 @@ func TestSockChatHTTP(t *testing.T) {
 		server.ServeHTTP(response, request)
 
 		require.Equal(t, http.StatusUnauthorized, response.Code)
+	})
+
+	t.Run("returns error for request for history of channel which does not exist", func(t *testing.T) {
+		request := newChannelHistoryRequest("not_exists")
+		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusNotFound, response.Code)
 	})
 
 	t.Run("returns messages history", func(t *testing.T) {

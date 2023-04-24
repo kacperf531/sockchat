@@ -36,6 +36,7 @@ type SockchatChannelStore interface {
 	AddUserToChannel(channel string, user SockchatUserHandler) error
 	RemoveUserFromChannel(channel string, user SockchatUserHandler) error
 	DisconnectUser(user SockchatUserHandler)
+	ChannelExists(name string) bool
 }
 
 // SockchatProfileStore manages DB-stored user profiles
@@ -208,6 +209,14 @@ func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
 	s.authorizeHTTPRequest(w, r)
 	channelName := r.URL.Query().Get("channel")
+	if channelName == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !s.channelStore.ChannelExists(channelName) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 	messages, err := s.messageStore.GetMessagesByChannel(channelName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

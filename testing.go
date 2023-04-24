@@ -105,6 +105,10 @@ func (store *StubChannelStore) CreateChannel(name string) error {
 func (store *StubChannelStore) DisconnectUser(user SockchatUserHandler) {
 }
 
+func (store *StubChannelStore) ChannelExists(name string) bool {
+	return name != "not_exists"
+}
+
 func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
 	return &Channel{}, nil
 }
