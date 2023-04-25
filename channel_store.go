@@ -3,6 +3,7 @@ package sockchat
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/kacperf531/sockchat/common"
@@ -104,10 +105,12 @@ func (s *ChannelStore) MessageChannel(message *common.MessageEvent) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.messageStore.IndexMessage(message)
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err := s.messageStore.IndexMessage(message)
+		if err != nil {
+			log.Printf("warning: failed to index message: %v", err)
+		}
+	}()
 	go channel.MessageMembers(NewSocketMessage(NewMessageEvent, message))
 	return nil
 }

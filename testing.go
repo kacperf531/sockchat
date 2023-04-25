@@ -133,23 +133,6 @@ func (store *StubChannelStore) MessageChannel(message *common.MessageEvent) erro
 	return nil
 }
 
-type messageStoreSpy struct {
-	indexMessageCalls int
-}
-
-func (s *messageStoreSpy) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
-	return nil, nil
-}
-
-func (s *messageStoreSpy) SearchMessagesInChannel(channel string, soughtPhrase string) ([]*common.MessageEvent, error) {
-	return nil, nil
-}
-
-func (s *messageStoreSpy) IndexMessage(*common.MessageEvent) (string, error) {
-	s.indexMessageCalls++
-	return "", nil
-}
-
 type messageStoreStub struct {
 	messages []*common.MessageEvent
 	lock     sync.Mutex

@@ -9,7 +9,7 @@ import (
 )
 
 func TestAuthorizedUserFlow(t *testing.T) {
-	messageStore := &messageStoreSpy{}
+	messageStore := &messageStoreStub{}
 	channelStore, _ := NewChannelStore(messageStore)
 	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
@@ -31,7 +31,7 @@ func TestAuthorizedUserFlow(t *testing.T) {
 }
 
 func TestMultipleConnectionsSync(t *testing.T) {
-	messageStore := &messageStoreSpy{}
+	messageStore := &messageStoreStub{}
 	channelStore, _ := NewChannelStore(messageStore)
 	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}

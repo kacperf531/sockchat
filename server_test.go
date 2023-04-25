@@ -16,7 +16,7 @@ import (
 
 func TestSockChatWS(t *testing.T) {
 	channelStore := &StubChannelStore{Channels: map[string]*Channel{ChannelWithUser: {members: make(map[SockchatUserHandler]bool)}}}
-	messageStore := &messageStoreSpy{}
+	messageStore := &messageStoreStub{}
 	users := &userStoreDouble{}
 	testTimeoutUnauthorized := 200 * time.Millisecond
 	testTimeoutAuthorized := 20 * testTimeoutUnauthorized

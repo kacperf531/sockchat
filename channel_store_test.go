@@ -2,17 +2,17 @@ package sockchat
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kacperf531/sockchat/common"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestChannelStore(t *testing.T) {
 
 	dummyUser := UserHandler{}
-	messageStoreSpy := &messageStoreSpy{}
-	store, _ := NewChannelStore(messageStoreSpy)
+	messageStore := &messageStoreStub{}
+	store, _ := NewChannelStore(messageStore)
 
 	t.Run("returns error on nonexistent channel", func(t *testing.T) {
 		_, err := store.getChannel("Foo420")
@@ -79,7 +79,22 @@ func TestChannelStore(t *testing.T) {
 		store.CreateChannel("Qux")
 		store.MessageChannel(&common.MessageEvent{Channel: "Qux", Author: "Foo", Text: "Bar", Timestamp: 0})
 
-		require.Equal(t, 1, messageStoreSpy.indexMessageCalls)
+		messageFound := make(chan bool, 1)
+		go func() {
+			for {
+				msgs, _ := messageStore.GetMessagesByChannel("Qux")
+				if len(msgs) == 1 {
+					messageFound <- true
+					return
+				}
+			}
+		}()
+		select {
+		case <-messageFound:
+			return
+		case <-time.After(200 * time.Millisecond):
+			t.Error("message was not stored in channel")
+		}
 	})
 
 }
