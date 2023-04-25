@@ -31,11 +31,10 @@ var wsUpgrader = websocket.Upgrader{
 
 // SockchatChannelStore manages chat channels (rooms) and dispatches messages among their members
 type SockchatChannelStore interface {
-	GetChannel(name string) (*Channel, error)
 	CreateChannel(name string) error
 	AddUserToChannel(channel string, user SockchatUserHandler) error
 	RemoveUserFromChannel(channel string, user SockchatUserHandler) error
-	MessageChannel(channel string, msg *common.MessageEvent) error
+	MessageChannel(msg *common.MessageEvent) error
 	DisconnectUser(user SockchatUserHandler)
 	IsUserPresentIn(user SockchatUserHandler, channel string) bool
 	ChannelExists(name string) bool

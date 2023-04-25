@@ -23,7 +23,10 @@ func NewChannelStore(messageStore SockchatMessageStore) (*ChannelStore, error) {
 	return &ChannelStore{Channels: make(map[string]*Channel), messageStore: messageStore}, nil
 }
 
-func (s *ChannelStore) GetChannel(name string) (*Channel, error) {
+func (s *ChannelStore) getChannel(name string) (*Channel, error) {
+	if name == "" {
+		return nil, ErrEmptyChannelName
+	}
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	channel := s.Channels[name]
@@ -47,14 +50,10 @@ func (s *ChannelStore) CreateChannel(channelName string) error {
 }
 
 func (s *ChannelStore) AddUserToChannel(channelName string, user SockchatUserHandler) error {
-	if channelName == "" {
-		return ErrEmptyChannelName
-	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	channel := s.Channels[channelName]
-	if channel == nil {
-		return ErrChannelDoesNotExist
+
+	channel, err := s.getChannel(channelName)
+	if err != nil {
+		return err
 	}
 	if channel.HasMember(user) {
 		return ErrUserAlreadyInChannel
@@ -65,15 +64,10 @@ func (s *ChannelStore) AddUserToChannel(channelName string, user SockchatUserHan
 }
 
 func (s *ChannelStore) RemoveUserFromChannel(channelName string, user SockchatUserHandler) error {
-	if channelName == "" {
-		return ErrEmptyChannelName
-	}
-	channel, err := s.GetChannel(channelName)
+	channel, err := s.getChannel(channelName)
 	if err != nil {
 		return err
 	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	if !channel.HasMember(user) {
 		return ErrUserNotInChannel
 	}
@@ -97,15 +91,20 @@ func (s *ChannelStore) ChannelExists(channelName string) bool {
 	return s.Channels[channelName] != nil
 }
 
-func (s *ChannelStore) IsUserPresentIn(user SockchatUserHandler, channel string) bool {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return s.Channels[channel].HasMember(user)
+func (s *ChannelStore) IsUserPresentIn(user SockchatUserHandler, channelName string) bool {
+	channel, err := s.getChannel(channelName)
+	if err != nil {
+		return false
+	}
+	return channel.HasMember(user)
 }
 
-func (s *ChannelStore) MessageChannel(channelName string, message *common.MessageEvent) error {
-	s.messageStore.IndexMessage(message)
-	channel, err := s.GetChannel(channelName)
+func (s *ChannelStore) MessageChannel(message *common.MessageEvent) error {
+	channel, err := s.getChannel(message.Channel)
+	if err != nil {
+		return err
+	}
+	_, err = s.messageStore.IndexMessage(message)
 	if err != nil {
 		return err
 	}

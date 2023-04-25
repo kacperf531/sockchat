@@ -123,7 +123,7 @@ func (u *UserHandler) HandleRequests() {
 				req.errCallback <- ErrUserNotInChannel
 				continue
 			}
-			req.errCallback <- u.channelStore.MessageChannel(reqFields.Channel, &common.MessageEvent{Text: reqFields.Text, Author: u.getNick(), Timestamp: time.Now().Unix()})
+			req.errCallback <- u.channelStore.MessageChannel(&common.MessageEvent{Text: reqFields.Text, Channel: reqFields.Channel, Author: u.getNick(), Timestamp: time.Now().Unix()})
 		}
 	}
 }

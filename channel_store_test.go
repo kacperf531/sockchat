@@ -15,9 +15,16 @@ func TestChannelStore(t *testing.T) {
 	store, _ := NewChannelStore(messageStoreSpy)
 
 	t.Run("returns error on nonexistent channel", func(t *testing.T) {
-		_, err := store.GetChannel("Foo420")
+		_, err := store.getChannel("Foo420")
 		if err == nil {
 			t.Error("error should be returned on nonexistent channel, got nil")
+		}
+	})
+
+	t.Run("returns error on empty channel", func(t *testing.T) {
+		_, err := store.getChannel("")
+		if err == nil {
+			t.Error("error should be returned on empty channel, got nil")
 		}
 	})
 
@@ -26,7 +33,8 @@ func TestChannelStore(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected issue with creating channel %v", err)
 		}
-		AssertChannelExists(t, store, "Foo")
+		_, err = store.getChannel("Foo")
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not create channel with existing name", func(t *testing.T) {
@@ -64,28 +72,14 @@ func TestChannelStore(t *testing.T) {
 		store.AddUserToChannel("Baz", &dummyUser)
 		store.RemoveUserFromChannel("Baz", &dummyUser)
 
-		assert.True(t, ChannelHasMember(store, "Bar", &dummyUser))
+		assert.True(t, store.IsUserPresentIn(&dummyUser, "Bar"))
 	})
 
 	t.Run("Channel stores messages from users", func(t *testing.T) {
 		store.CreateChannel("Qux")
-		store.MessageChannel("Qux", &common.MessageEvent{Channel: "Qux", Author: "Foo", Text: "Bar", Timestamp: 0})
+		store.MessageChannel(&common.MessageEvent{Channel: "Qux", Author: "Foo", Text: "Bar", Timestamp: 0})
 
 		require.Equal(t, 1, messageStoreSpy.indexMessageCalls)
 	})
 
-}
-
-func AssertChannelExists(t *testing.T, store *ChannelStore, channel string) {
-	t.Helper()
-	_, err := store.GetChannel(channel)
-	if err != nil {
-		t.Errorf("channel %s does not exist", channel)
-	}
-}
-
-func ChannelHasMember(store *ChannelStore, channelName string, member *UserHandler) bool {
-	channel, _ := store.GetChannel(channelName)
-	_, exists := channel.members[member]
-	return exists
 }

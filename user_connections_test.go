@@ -8,7 +8,8 @@ import (
 
 func TestUserManager(t *testing.T) {
 
-	store, _ := NewChannelStore(&messageStoreSpy{})
+	messageStoreSpy := &messageStoreSpy{}
+	store, _ := NewChannelStore(messageStoreSpy)
 	userManager := NewConnectedUsersPool(store)
 
 	t.Run("Resources (handlers) are cleaned up when user with 1 connection disconnects", func(t *testing.T) {

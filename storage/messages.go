@@ -152,7 +152,9 @@ func (s *MessageStore) IndexMessage(msg *common.MessageEvent) (string, error) {
 	}
 	if err := json.Unmarshal(bodyBytes, &newDocument); err == nil {
 		return newDocument.Id, nil
+
 	}
+
 	return "", fmt.Errorf("could not unmarshal response from DB when saving message: %v", err)
 
 }

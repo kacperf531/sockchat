@@ -109,10 +109,6 @@ func (store *StubChannelStore) ChannelExists(name string) bool {
 	return name != "not_exists"
 }
 
-func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
-	return &Channel{}, nil
-}
-
 func (s *StubChannelStore) AddUserToChannel(name string, user SockchatUserHandler) error {
 	if name == ChannelWithUser {
 		return ErrUserAlreadyInChannel
@@ -133,7 +129,7 @@ func (s *StubChannelStore) IsUserPresentIn(user SockchatUserHandler, channel str
 	return false
 }
 
-func (store *StubChannelStore) MessageChannel(name string, message *common.MessageEvent) error {
+func (store *StubChannelStore) MessageChannel(message *common.MessageEvent) error {
 	return nil
 }
 
