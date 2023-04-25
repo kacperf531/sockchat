@@ -10,6 +10,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kacperf531/sockchat"
 	"github.com/kacperf531/sockchat/storage"
+	"github.com/redis/go-redis/v9"
 )
 
 const messagesIndex = "messages"
@@ -44,7 +45,14 @@ func main() {
 	channelStore, err := sockchat.NewChannelStore(messageStore)
 	users := storage.NewUserStore(db)
 
-	server := sockchat.NewSockChatServer(channelStore, users, messageStore)
+	cache := redis.NewClient(
+		&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "", // TODO: add env variables for redis
+			DB:       0,
+		},
+	)
+	server := sockchat.NewSockChatServer(channelStore, users, messageStore, cache)
 
 	if err != nil {
 		log.Fatalf("problem creating file system player store, %v ", err)

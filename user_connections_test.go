@@ -8,7 +8,7 @@ import (
 
 func TestUserManager(t *testing.T) {
 
-	messageStore := &messageStoreStub{}
+	messageStore := &StubMessageStore{}
 	store, _ := NewChannelStore(messageStore)
 	userManager := NewConnectedUsersPool(store)
 

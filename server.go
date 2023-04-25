@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/kacperf531/sockchat/common"
 	"github.com/kacperf531/sockchat/storage"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -43,8 +44,9 @@ type SockchatChannelStore interface {
 // SockchatProfileStore manages DB-stored user profiles
 type SockchatProfileStore interface {
 	Create(ctx context.Context, u *CreateProfileRequest) error
-	Edit(ctx context.Context, u *EditProfileRequest) error
+	Edit(ctx context.Context, nick string, u *EditProfileRequest) error
 	IsAuthValid(ctx context.Context, nick, password string) bool
+	GetProfile(ctx context.Context, nick string) (*common.PublicProfile, error)
 }
 
 // SockchatMessageStore manages messages in ES
@@ -82,10 +84,10 @@ func NewErrorMessage(details string) SocketMessage {
 	return NewSocketMessage(InvalidRequestEvent, map[string]string{"details": details})
 }
 
-func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.UserStore, messageStore SockchatMessageStore) *SockchatServer {
+func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.UserStore, messageStore SockchatMessageStore, userCache *redis.Client) *SockchatServer {
 	s := new(SockchatServer)
 	s.channelStore = channelStore
-	s.userProfiles = &ProfileService{store: userStore}
+	s.userProfiles = &ProfileService{store: userStore, cache: userCache}
 	s.messageStore = messageStore
 	s.authorizedUsers = NewConnectedUsersPool(channelStore)
 
@@ -97,6 +99,7 @@ func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.User
 	router.Handle("/register", http.HandlerFunc(s.register))
 	router.Handle("/edit_profile", authenticate(s.editProfile))
 	router.Handle("/history", authenticate(s.getChannelHistory))
+	router.Handle("/profile", authenticate(s.getProfile))
 	s.Handler = router
 
 	return s
@@ -155,11 +158,30 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	writeJsonHttpResponse(w, http.StatusCreated, "")
 }
 
+func (s *SockchatServer) getProfile(w http.ResponseWriter, r *http.Request) {
+	// No authorization required for getting user profiles (public info)
+	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+	defer cancel()
+	profile, err := s.userProfiles.GetProfile(ctx, r.URL.Query().Get("nick"))
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	profileBytes, err := json.Marshal(profile)
+	if err != nil {
+		log.Printf("error marshaling profile: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Write(profileBytes)
+}
+
 func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
 	userData := readEditProfileRequest(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
-	err := s.userProfiles.Edit(ctx, userData)
+	username, _, _ := r.BasicAuth()
+	err := s.userProfiles.Edit(ctx, username, userData)
 	if err != nil {
 		writeJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		return

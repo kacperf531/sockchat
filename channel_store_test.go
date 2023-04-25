@@ -11,7 +11,7 @@ import (
 func TestChannelStore(t *testing.T) {
 
 	dummyUser := UserHandler{}
-	messageStore := &messageStoreStub{}
+	messageStore := &StubMessageStore{}
 	store, _ := NewChannelStore(messageStore)
 
 	t.Run("returns error on nonexistent channel", func(t *testing.T) {

@@ -16,12 +16,12 @@ import (
 
 func TestSockChatWS(t *testing.T) {
 	channelStore := &StubChannelStore{Channels: map[string]*Channel{ChannelWithUser: {members: make(map[SockchatUserHandler]bool)}}}
-	messageStore := &messageStoreStub{}
+	messageStore := &StubMessageStore{}
 	users := &userStoreDouble{}
 	testTimeoutUnauthorized := 200 * time.Millisecond
 	testTimeoutAuthorized := 20 * testTimeoutUnauthorized
 
-	server := NewSockChatServer(channelStore, users, messageStore)
+	server := NewSockChatServer(channelStore, users, messageStore, TestingRedisClient)
 
 	server.SetTimeoutValues(testTimeoutAuthorized, testTimeoutUnauthorized)
 	testServer := httptest.NewServer(server)
@@ -132,19 +132,33 @@ func TestSockChatWS(t *testing.T) {
 
 func TestSockChatHTTP(t *testing.T) {
 	sampleMessage := common.MessageEvent{Text: "foo", Channel: "bar", Author: "baz"}
-	messageStore := &messageStoreStub{messages: []*common.MessageEvent{&sampleMessage}}
+	messageStore := &StubMessageStore{messages: []*common.MessageEvent{&sampleMessage}}
 	channelStore := &StubChannelStore{make(map[string]*Channel)}
 	users := &userStoreDouble{}
 
-	server := NewSockChatServer(channelStore, users, messageStore)
+	oriDescription := ValidUserDescription
+	updatedDescription := "D3scription"
+
+	server := NewSockChatServer(channelStore, users, messageStore, TestingRedisClient)
 
 	t.Run("can register a new user over HTTP endpoint", func(t *testing.T) {
-		request := newRegisterRequest(CreateProfileRequest{Nick: "Foo", Password: "Bar420"})
+		request := newRegisterRequest(CreateProfileRequest{Nick: "Foo", Password: "Bar420", Description: oriDescription})
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
 
 		assert.Equal(t, http.StatusCreated, response.Code)
+	})
+
+	t.Run("returns user profile of the user on request", func(t *testing.T) {
+		request := newGetProfileRequest(ValidUserNick)
+		response := httptest.NewRecorder()
+		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
+
+		server.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusOK, response.Code)
+		assert.Contains(t, response.Body.String(), oriDescription)
 	})
 
 	t.Run("can not register a new user with missing required data", func(t *testing.T) {
@@ -171,7 +185,7 @@ func TestSockChatHTTP(t *testing.T) {
 	})
 
 	t.Run("can edit existing user over HTTP endpoint", func(t *testing.T) {
-		request := newEditProfileRequest(EditProfileRequest{Description: "D3scription"})
+		request := newEditProfileRequest(EditProfileRequest{Description: updatedDescription})
 		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
 		response := httptest.NewRecorder()
 
@@ -180,8 +194,19 @@ func TestSockChatHTTP(t *testing.T) {
 		assert.Equal(t, http.StatusOK, response.Code)
 	})
 
+	t.Run("returns updated user profile of the user on request", func(t *testing.T) {
+		request := newGetProfileRequest(ValidUserNick)
+		response := httptest.NewRecorder()
+		request.SetBasicAuth(ValidUserNick, ValidUserPassword)
+
+		server.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusOK, response.Code)
+		assert.Contains(t, response.Body.String(), updatedDescription)
+	})
+
 	t.Run("returns 401 on invalid password", func(t *testing.T) {
-		request := newEditProfileRequest(EditProfileRequest{Description: "D3scription"})
+		request := newEditProfileRequest(EditProfileRequest{Description: updatedDescription})
 		request.SetBasicAuth(ValidUserNick, "fishyPassword")
 		response := httptest.NewRecorder()
 
@@ -233,11 +258,17 @@ func TestSockChatHTTP(t *testing.T) {
 		sampleMessageBytes, _ := json.Marshal(sampleMessage)
 		assert.NotContains(t, response.Body.String(), string(sampleMessageBytes))
 	})
+
 }
 
 func newRegisterRequest(b CreateProfileRequest) *http.Request {
 	requestBytes, _ := json.Marshal(b)
 	req, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(requestBytes))
+	return req
+}
+
+func newGetProfileRequest(nick string) *http.Request {
+	req, _ := http.NewRequest(http.MethodGet, "/profile?nick="+nick, nil)
 	return req
 }
 

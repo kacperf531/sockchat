@@ -14,7 +14,7 @@ import (
 
 type UserStore interface {
 	InsertUser(context.Context, *User) error
-	UpdateUser(context.Context, *User) error
+	UpdatePublicProfile(context.Context, *common.PublicProfile) error
 	SelectUser(context.Context, string) (*User, error)
 }
 
@@ -54,7 +54,7 @@ func (s *userStore) InsertUser(ctx context.Context, u *User) error {
 	return nil
 }
 
-func (s *userStore) UpdateUser(ctx context.Context, u *User) error {
+func (s *userStore) UpdatePublicProfile(ctx context.Context, u *common.PublicProfile) error {
 	const stmt = "UPDATE users SET description = ? WHERE nick = ?;  "
 
 	res, err := s.db.ExecContext(ctx, stmt, u.Description, u.Nick)

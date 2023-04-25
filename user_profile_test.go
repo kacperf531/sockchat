@@ -13,7 +13,7 @@ import (
 // Test double which spies create/update calls and stubs select request
 type userStoreDouble struct {
 	createCalls []*storage.User
-	updateCalls []*storage.User
+	updateCalls []*common.PublicProfile
 }
 
 func (s *userStoreDouble) InsertUser(ctx context.Context, u *storage.User) error {
@@ -24,17 +24,24 @@ func (s *userStoreDouble) InsertUser(ctx context.Context, u *storage.User) error
 	return nil
 }
 
-func (s *userStoreDouble) UpdateUser(ctx context.Context, u *storage.User) error {
+func (s *userStoreDouble) UpdatePublicProfile(ctx context.Context, u *common.PublicProfile) error {
 	s.updateCalls = append(s.updateCalls, u)
+
 	return nil
 }
 
 func (s *userStoreDouble) SelectUser(ctx context.Context, nick string) (*storage.User, error) {
+	var description string
+	if len(s.updateCalls) > 0 {
+		description = s.updateCalls[0].Description
+	} else {
+		description = ValidUserDescription
+	}
 	if nick == ValidUserNick {
-		return &storage.User{Nick: ValidUserNick, PwHash: ValidUserPasswordHash, Description: "desc"}, nil
+		return &storage.User{Nick: ValidUserNick, PwHash: ValidUserPasswordHash, Description: description}, nil
 	}
 	if nick == ValidUser2Nick {
-		return &storage.User{Nick: ValidUser2Nick, PwHash: ValidUserPasswordHash, Description: "desc"}, nil
+		return &storage.User{Nick: ValidUser2Nick, PwHash: ValidUserPasswordHash, Description: description}, nil
 	}
 	return nil, fmt.Errorf("user not found")
 
@@ -43,7 +50,7 @@ func (s *userStoreDouble) SelectUser(ctx context.Context, nick string) (*storage
 func TestUserProfile(t *testing.T) {
 
 	store := userStoreDouble{}
-	service := ProfileService{&store}
+	service := ProfileService{&store, TestingRedisClient}
 
 	t.Run("Calls to insert new user when request is OK", func(t *testing.T) {
 		newUser := &CreateProfileRequest{Nick: "x69", Password: "foo420", Description: "description goes here"}
@@ -71,9 +78,14 @@ func TestUserProfile(t *testing.T) {
 
 	t.Run("Calls to update existing user when edit request is OK", func(t *testing.T) {
 		req := &EditProfileRequest{Description: "Bar"}
-		err := service.Edit(context.TODO(), req)
+		err := service.Edit(context.TODO(), "dummy", req)
 		assert.NoError(t, err)
 		assert.Equal(t, req.Description, store.updateCalls[0].Description)
+	})
+
+	t.Run("GetProfile returns error for non-existing user", func(t *testing.T) {
+		_, err := service.GetProfile(context.TODO(), "NonExistingUser")
+		assert.Error(t, err)
 	})
 
 }

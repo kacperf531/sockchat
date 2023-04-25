@@ -1,20 +1,23 @@
 package sockchat
 
 import (
+	"context"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthorizedUserFlow(t *testing.T) {
-	messageStore := &messageStoreStub{}
+	messageStore := &StubMessageStore{}
 	channelStore, _ := NewChannelStore(messageStore)
 	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
 
-	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore))
+	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore, TestingRedisClient))
+	TestingRedisClient.FlushAll(context.TODO()) // Flush the cache to get rid of data from previous executions
 	defer server.Close()
 
 	wsURL := GetWsURL(server.URL)
@@ -23,6 +26,8 @@ func TestAuthorizedUserFlow(t *testing.T) {
 		ws := NewTestWS(t, wsURL)
 		defer ws.Close()
 		ws.Write(t, NewSocketMessage(LoginAction, LoginRequest{Nick: ValidUserNick, Password: ValidUserPassword}))
+		response := <-ws.MessageStash
+		require.Equal(t, "logged_in:"+ValidUserNick, response.Action)
 		ws.Write(t, NewSocketMessage(JoinAction, ChannelRequest{"foo"}))
 		ws.Write(t, NewSocketMessage(SendMessageAction, SendMessageRequest{Channel: "foo", Text: "hi!"}))
 
@@ -31,12 +36,12 @@ func TestAuthorizedUserFlow(t *testing.T) {
 }
 
 func TestMultipleConnectionsSync(t *testing.T) {
-	messageStore := &messageStoreStub{}
+	messageStore := &StubMessageStore{}
 	channelStore, _ := NewChannelStore(messageStore)
 	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
 
-	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore))
+	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore, TestingRedisClient))
 	wsURL := GetWsURL(server.URL)
 
 	conns := make([]*TestWS, 2)
@@ -93,11 +98,11 @@ func TestMultipleConnectionsSync(t *testing.T) {
 
 func TestMultipleUsersSync(t *testing.T) {
 
-	messageStore := &messageStoreStub{}
+	messageStore := &StubMessageStore{}
 	channelStore, _ := NewChannelStore(messageStore)
 	channelStore.CreateChannel("foo")
 	users := &userStoreDouble{}
-	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore))
+	server := httptest.NewServer(NewSockChatServer(channelStore, users, messageStore, TestingRedisClient))
 	wsURL := GetWsURL(server.URL)
 
 	conns := make([]*TestWS, 2)

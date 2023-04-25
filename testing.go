@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/kacperf531/sockchat/common"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -18,8 +19,17 @@ const (
 	ValidUser2Nick        = "VerySpecialTestUser"
 	ValidUserPassword     = "foo420"
 	ValidUserPasswordHash = "$2a$10$Xl002E7Vj5qM1RHMiM06KOCHofpLcPTIj7LeyZgTf62txoOBvoyia"
+	ValidUserDescription  = "I am a very special test user"
 	ChannelWithUser       = "channel_with_user"
 	ChannelWithoutUser    = "channel_without_user"
+)
+
+var TestingRedisClient = redis.NewClient(
+	&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       1,
+	},
 )
 
 // Test WS client
@@ -133,12 +143,12 @@ func (store *StubChannelStore) MessageChannel(message *common.MessageEvent) erro
 	return nil
 }
 
-type messageStoreStub struct {
+type StubMessageStore struct {
 	messages []*common.MessageEvent
 	lock     sync.Mutex
 }
 
-func (s *messageStoreStub) FindMessages(channel, soughtPhrase string) ([]*common.MessageEvent, error) {
+func (s *StubMessageStore) FindMessages(channel, soughtPhrase string) ([]*common.MessageEvent, error) {
 	if soughtPhrase != "" {
 		// just assume that the results are filtered out
 		return nil, nil
@@ -149,7 +159,7 @@ func (s *messageStoreStub) FindMessages(channel, soughtPhrase string) ([]*common
 	return s.messages, nil
 }
 
-func (s *messageStoreStub) IndexMessage(*common.MessageEvent) (string, error) {
+func (s *StubMessageStore) IndexMessage(*common.MessageEvent) (string, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.messages = append(s.messages, &common.MessageEvent{})
