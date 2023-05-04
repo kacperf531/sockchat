@@ -7,11 +7,37 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/kacperf531/sockchat/common"
 	"github.com/mitchellh/mapstructure"
+)
+
+const (
+	sortByTimestamp = `"sort" : [ { "timestamp" : { "order" : "desc" } }]`
+	searchAll       = `
+	"query" : { "match" : {"channel": %q} },`
+	searchMatch = `
+	"query": {
+			"bool": {
+				"filter": [
+					{
+						"term": {
+							"channel.keyword": {
+								"value": %q
+							}
+						}
+					}
+				],
+				"must": {
+					"match_phrase_prefix": {
+						"text": %q
+					}
+				}
+			}
+		},`
 )
 
 type MessageStore struct {
@@ -23,61 +49,28 @@ func NewMessageStore(es *elasticsearch.Client, indexName string) *MessageStore {
 	return &MessageStore{es, indexName}
 }
 
-func getAllMessagesInChannelQuery(channel string) map[string]interface{} {
-	return map[string]interface{}{
-		"sort": []map[string]interface{}{{
-			"timestamp": map[string]string{
-				"order": "desc"}}},
-		"query": map[string]interface{}{
-			"match": map[string]string{
-				"channel": channel,
-			},
-		},
+func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader {
+	var b strings.Builder
+
+	b.WriteString("{\n")
+
+	if soughtPhrase == "" {
+		b.WriteString(fmt.Sprintf(searchAll, channel))
+	} else {
+		b.WriteString(fmt.Sprintf(searchMatch, channel, soughtPhrase))
 	}
+	b.WriteString((sortByTimestamp))
+	b.WriteString("\n}")
+
+	return strings.NewReader(b.String())
 }
 
-func searchMessagesInChannelQuery(channel, soughtPhrase string) map[string]interface{} {
-	return map[string]interface{}{
-		"sort": []map[string]interface{}{{
-			"timestamp": map[string]string{
-				"order": "desc"}}},
-		"query": map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
-					{
-						"term": map[string]interface{}{
-							"channel.keyword": map[string]string{
-								"value": channel,
-							},
-						},
-					},
-					{
-						"query_string": map[string]interface{}{
-							"query": fmt.Sprintf("*%s*", soughtPhrase),
-							"fields": []string{
-								"text",
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func (s *MessageStore) runSearchQuery(query map[string]interface{}) ([]*common.MessageEvent, error) {
-	var (
-		buf bytes.Buffer
-		r   map[string]interface{}
-	)
-	if err := json.NewEncoder(&buf).Encode(query); err != nil {
-		log.Fatalf("Error encoding query: %s", err)
-	}
+func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, error) {
 
 	res, err := s.es.Search(
 		s.es.Search.WithContext(context.Background()),
 		s.es.Search.WithIndex(s.indexName),
-		s.es.Search.WithBody(&buf),
+		s.es.Search.WithBody(query),
 		s.es.Search.WithTrackTotalHits(true),
 		s.es.Search.WithPretty(),
 	)
@@ -100,6 +93,7 @@ func (s *MessageStore) runSearchQuery(query map[string]interface{}) ([]*common.M
 		}
 	}
 
+	var r map[string]interface{}
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		log.Fatalf("Error parsing the response body: %s", err)
 	}
@@ -118,13 +112,14 @@ func (s *MessageStore) runSearchQuery(query map[string]interface{}) ([]*common.M
 }
 
 func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
-	return s.runSearchQuery(getAllMessagesInChannelQuery(channel))
+	query := s.buildSearchQuery(channel, "")
+	return s.runSearchQuery(query)
 }
 
 func (s *MessageStore) SearchMessagesInChannel(channel, phrase string) ([]*common.MessageEvent, error) {
-	return s.runSearchQuery(searchMessagesInChannelQuery(channel, phrase))
+	query := s.buildSearchQuery(channel, phrase)
+	return s.runSearchQuery(query)
 }
-
 func (s *MessageStore) IndexMessage(msg *common.MessageEvent) (string, error) {
 	data, err := json.Marshal(msg)
 	if err != nil {
