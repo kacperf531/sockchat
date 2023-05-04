@@ -17,27 +17,20 @@ import (
 
 const (
 	sortByTimestamp = `"sort" : [ { "timestamp" : { "order" : "desc" } }]`
-	searchAll       = `
-	"query" : { "match" : {"channel": %q} },`
-	searchMatch = `
-	"query": {
-			"bool": {
-				"filter": [
-					{
-						"term": {
-							"channel.keyword": {
-								"value": %q
-							}
-						}
-					}
-				],
-				"must": {
-					"match_phrase_prefix": {
-						"text": %q
-					}
+	filterByChannel = `"filter": [
+		{
+			"term": {
+				"channel.keyword": {
+					"value": %q
 				}
 			}
-		},`
+		}
+	]`
+	matchByPhrase = `"must": {
+		"match_phrase_prefix": {
+			"text": %q
+		}
+	}`
 )
 
 type MessageStore struct {
@@ -53,14 +46,18 @@ func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader 
 	var b strings.Builder
 
 	b.WriteString("{\n")
+	b.WriteString(`"query": {`)
+	b.WriteString(`"bool": {`)
+	b.WriteString(fmt.Sprintf(filterByChannel, channel))
+	if soughtPhrase != "" {
+		b.WriteString("," + fmt.Sprintf(matchByPhrase, soughtPhrase))
 
-	if soughtPhrase == "" {
-		b.WriteString(fmt.Sprintf(searchAll, channel))
-	} else {
-		b.WriteString(fmt.Sprintf(searchMatch, channel, soughtPhrase))
 	}
-	b.WriteString((sortByTimestamp))
+	b.WriteString("}")
+	b.WriteString("},")
+	b.WriteString(sortByTimestamp)
 	b.WriteString("\n}")
+	log.Print(b.String())
 
 	return strings.NewReader(b.String())
 }
