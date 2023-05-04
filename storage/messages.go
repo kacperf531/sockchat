@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/elastic/go-elasticsearch/v7"
@@ -16,21 +17,9 @@ import (
 )
 
 const (
-	sortByTimestamp = `"sort" : [ { "timestamp" : { "order" : "desc" } }]`
-	filterByChannel = `"filter": [
-		{
-			"term": {
-				"channel.keyword": {
-					"value": %q
-				}
-			}
-		}
-	]`
-	matchByPhrase = `"must": {
-		"match_phrase_prefix": {
-			"text": %q
-		}
-	}`
+	sortByTimestamp = `"sort": [{"timestamp": {"order": "desc"}}]`
+	filterByChannel = `"filter": [{"term": {"channel.keyword": {"value": %s}}}]`
+	matchByPhrase   = `"must": {"match_phrase_prefix": {"text": %s}}`
 )
 
 type MessageStore struct {
@@ -48,10 +37,9 @@ func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader 
 	b.WriteString("{\n")
 	b.WriteString(`"query": {`)
 	b.WriteString(`"bool": {`)
-	b.WriteString(fmt.Sprintf(filterByChannel, channel))
+	fmt.Fprintf(&b, filterByChannel, strconv.Quote(channel))
 	if soughtPhrase != "" {
-		b.WriteString("," + fmt.Sprintf(matchByPhrase, soughtPhrase))
-
+		fmt.Fprintf(&b, ",%s", fmt.Sprintf(matchByPhrase, strconv.Quote(soughtPhrase)))
 	}
 	b.WriteString("}")
 	b.WriteString("},")
