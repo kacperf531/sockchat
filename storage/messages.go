@@ -57,7 +57,6 @@ func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader 
 	b.WriteString("},")
 	b.WriteString(sortByTimestamp)
 	b.WriteString("\n}")
-	log.Print(b.String())
 
 	return strings.NewReader(b.String())
 }
