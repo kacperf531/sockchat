@@ -95,8 +95,8 @@ func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.User
 	router := http.NewServeMux()
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
 	router.Handle("/register", http.HandlerFunc(s.register))
-	router.Handle("/edit_profile", http.HandlerFunc(s.editProfile))
-	router.Handle("/history", http.HandlerFunc(s.getChannelHistory))
+	router.Handle("/edit_profile", NewHttpAuthenticator(s.userProfiles, http.HandlerFunc(s.editProfile)))
+	router.Handle("/history", NewHttpAuthenticator(s.userProfiles, http.HandlerFunc(s.getChannelHistory)))
 	s.Handler = router
 
 	return s
@@ -158,12 +158,12 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	userData := CreateProfileRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	err = json.Unmarshal(bodyBytes, &userData)
 	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
@@ -171,9 +171,9 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	err = s.userProfiles.Create(ctx, &userData)
 	if err != nil {
 		if err == common.ErrResourceConflict {
-			s.WriteJsonHttpResponse(w, http.StatusConflict, NewErrorMessage("user already exists"))
+			WriteJsonHttpResponse(w, http.StatusConflict, NewErrorMessage("user already exists"))
 		} else {
-			s.WriteJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
+			WriteJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		}
 		return
 	}
@@ -181,77 +181,51 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
-	err := s.authorizeHTTPRequest(r)
-	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage(err.Error()))
-		return
-	}
 	userData := CreateProfileRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	err = json.Unmarshal(bodyBytes, &userData)
 	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
 	err = s.userProfiles.Edit(ctx, &userData)
 	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
+		WriteJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		return
 	}
-	s.WriteJsonHttpResponse(w, http.StatusOK, "")
+	WriteJsonHttpResponse(w, http.StatusOK, "")
 
 }
 
 func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
-	err := s.authorizeHTTPRequest(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
 	channelName := r.URL.Query().Get("channel")
 	soughtPhrase := r.URL.Query().Get("search")
 	if channelName == "" {
-		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("channel name is required"))
+		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("channel name is required"))
 		return
 	}
 	if !s.channelStore.ChannelExists(channelName) {
-		s.WriteJsonHttpResponse(w, http.StatusNotFound, NewErrorMessage("channel not found"))
+		WriteJsonHttpResponse(w, http.StatusNotFound, NewErrorMessage("channel not found"))
 		return
 	}
 	var messages []*common.MessageEvent
+	var err error
 	if soughtPhrase == "" {
 		messages, err = s.messageStore.GetMessagesByChannel(channelName)
 	} else {
 		messages, err = s.messageStore.SearchMessagesInChannel(channelName, soughtPhrase)
 	}
 	if err != nil {
-		s.WriteJsonHttpResponse(w, http.StatusInternalServerError, NewErrorMessage("Server error, please try again later"))
+		WriteJsonHttpResponse(w, http.StatusInternalServerError, NewErrorMessage("Server error, please try again later"))
 		return
 	}
-	s.WriteJsonHttpResponse(w, http.StatusOK, messages)
-}
-
-func (s *SockchatServer) WriteJsonHttpResponse(w http.ResponseWriter, statusCode int, data interface{}) error {
-	output, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	_, err = w.Write(output)
-	if err != nil {
-		log.Print(err)
-		return nil
-	}
-	return nil
+	WriteJsonHttpResponse(w, http.StatusOK, messages)
 }
 
 func (s *SockchatServer) authorizeConnection(request SocketMessage, conn *SockChatWS) error {
@@ -281,15 +255,41 @@ func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 	conn.Close()
 }
 
-func (s *SockchatServer) authorizeHTTPRequest(r *http.Request) error {
+type HttpAuthenticator struct {
+	profiles SockchatProfileStore
+	handler  http.Handler
+}
+
+func (a *HttpAuthenticator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	username, password, ok := r.BasicAuth()
 	if !ok {
-		return fmt.Errorf("no basic auth provided")
+		WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
-	if !s.userProfiles.IsAuthValid(ctx, username, password) {
-		return fmt.Errorf("invalid credentials")
+	if !a.profiles.IsAuthValid(ctx, username, password) {
+		WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
+	}
+	a.handler.ServeHTTP(w, r)
+}
+
+func NewHttpAuthenticator(profiles SockchatProfileStore, handlerToWrap http.Handler) *HttpAuthenticator {
+	return &HttpAuthenticator{profiles, handlerToWrap}
+}
+
+func WriteJsonHttpResponse(w http.ResponseWriter, statusCode int, data interface{}) error {
+	output, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	_, err = w.Write(output)
+	if err != nil {
+		log.Print(err)
+		return nil
 	}
 	return nil
 }
