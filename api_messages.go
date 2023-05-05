@@ -102,3 +102,21 @@ func UnmarshalMessageEvent(requestBytes json.RawMessage) *common.MessageEvent {
 	}
 	return &messageEvent
 }
+
+func UnmarshalCreateProfileRequest(requestBytes json.RawMessage) *CreateProfileRequest {
+	createProfileRequest := CreateProfileRequest{}
+	if err := json.Unmarshal(requestBytes, &createProfileRequest); err != nil {
+		log.Printf("error while unmarshaling request for creating profile: %v", err)
+		return nil
+	}
+	return &createProfileRequest
+}
+
+func UnmarshalEditProfileRequest(requestBytes json.RawMessage) *EditProfileRequest {
+	editProfileRequest := EditProfileRequest{}
+	if err := json.Unmarshal(requestBytes, &editProfileRequest); err != nil {
+		log.Printf("error while unmarshaling request for editing profile: %v", err)
+		return nil
+	}
+	return &editProfileRequest
+}

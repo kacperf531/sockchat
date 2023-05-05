@@ -138,7 +138,11 @@ type messageStoreStub struct {
 	lock     sync.Mutex
 }
 
-func (s *messageStoreStub) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
+func (s *messageStoreStub) FindMessages(channel, soughtPhrase string) ([]*common.MessageEvent, error) {
+	if soughtPhrase != "" {
+		// just assume that the results are filtered out
+		return nil, nil
+	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	// simplified stub - channel filtering & sorting logic is in ES
@@ -150,9 +154,4 @@ func (s *messageStoreStub) IndexMessage(*common.MessageEvent) (string, error) {
 	defer s.lock.Unlock()
 	s.messages = append(s.messages, &common.MessageEvent{})
 	return "", nil
-}
-
-func (s *messageStoreStub) SearchMessagesInChannel(channel string, soughtPhrase string) ([]*common.MessageEvent, error) {
-	// just assume that the results are filtered out
-	return nil, nil
 }

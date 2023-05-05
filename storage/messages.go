@@ -95,12 +95,7 @@ func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, 
 	return results, nil
 }
 
-func (s *MessageStore) GetMessagesByChannel(channel string) ([]*common.MessageEvent, error) {
-	query := s.buildSearchQuery(channel, "")
-	return s.runSearchQuery(query)
-}
-
-func (s *MessageStore) SearchMessagesInChannel(channel, phrase string) ([]*common.MessageEvent, error) {
+func (s *MessageStore) FindMessages(channel, phrase string) ([]*common.MessageEvent, error) {
 	query := s.buildSearchQuery(channel, phrase)
 	return s.runSearchQuery(query)
 }

@@ -25,8 +25,8 @@ func NewChannelStore(messageStore SockchatMessageStore) (*ChannelStore, error) {
 }
 
 func (s *ChannelStore) getChannel(name string) (*Channel, error) {
-	if name == "" {
-		return nil, ErrEmptyChannelName
+	if err := s.validateChannelName(name); err != nil {
+		return nil, err
 	}
 	s.lock.RLock()
 	defer s.lock.RUnlock()
@@ -38,8 +38,8 @@ func (s *ChannelStore) getChannel(name string) (*Channel, error) {
 }
 
 func (s *ChannelStore) CreateChannel(channelName string) error {
-	if channelName == "" {
-		return ErrEmptyChannelName
+	if err := s.validateChannelName(channelName); err != nil {
+		return err
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -51,7 +51,6 @@ func (s *ChannelStore) CreateChannel(channelName string) error {
 }
 
 func (s *ChannelStore) AddUserToChannel(channelName string, user SockchatUserHandler) error {
-
 	channel, err := s.getChannel(channelName)
 	if err != nil {
 		return err
@@ -112,6 +111,13 @@ func (s *ChannelStore) MessageChannel(message *common.MessageEvent) error {
 		}
 	}()
 	go channel.MessageMembers(NewSocketMessage(NewMessageEvent, message))
+	return nil
+}
+
+func (s *ChannelStore) validateChannelName(channelName string) error {
+	if channelName == "" {
+		return ErrEmptyChannelName
+	}
 	return nil
 }
 

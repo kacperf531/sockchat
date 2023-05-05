@@ -7,3 +7,8 @@ type MessageEvent struct {
 	Author    string `json:"author"`
 	Timestamp int64  `json:"timestamp"`
 }
+
+type PublicProfile struct {
+	Nick        string `json:"nick"`
+	Description string `json:"description"`
+}

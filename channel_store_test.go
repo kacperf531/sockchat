@@ -82,7 +82,7 @@ func TestChannelStore(t *testing.T) {
 		messageFound := make(chan bool, 1)
 		go func() {
 			for {
-				msgs, _ := messageStore.GetMessagesByChannel("Qux")
+				msgs, _ := messageStore.FindMessages("Qux", "")
 				if len(msgs) == 1 {
 					messageFound <- true
 					return
