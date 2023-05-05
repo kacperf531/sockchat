@@ -158,14 +158,12 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	userData := CreateProfileRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("error reading register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
+		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	err = json.Unmarshal(bodyBytes, &userData)
 	if err != nil {
-		log.Printf("error unmarshaling register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
+		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
@@ -173,9 +171,9 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	err = s.userProfiles.Create(ctx, &userData)
 	if err != nil {
 		if err == common.ErrResourceConflict {
-			w.WriteHeader(http.StatusConflict)
+			s.WriteJsonHttpResponse(w, http.StatusConflict, NewErrorMessage("user already exists"))
 		} else {
-			w.WriteHeader(http.StatusUnprocessableEntity)
+			s.WriteJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		}
 		return
 	}
@@ -183,55 +181,77 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
-	s.authorizeHTTPRequest(w, r)
+	err := s.authorizeHTTPRequest(r)
+	if err != nil {
+		s.WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage(err.Error()))
+		return
+	}
 	userData := CreateProfileRequest{}
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("error reading register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
+		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	err = json.Unmarshal(bodyBytes, &userData)
 	if err != nil {
-		log.Printf("error unmarshaling register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
+		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
 	err = s.userProfiles.Edit(ctx, &userData)
 	if err != nil {
-		w.WriteHeader(http.StatusUnprocessableEntity)
+		s.WriteJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	s.WriteJsonHttpResponse(w, http.StatusOK, "")
 
 }
 
 func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
-	s.authorizeHTTPRequest(w, r)
+	err := s.authorizeHTTPRequest(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 	channelName := r.URL.Query().Get("channel")
 	soughtPhrase := r.URL.Query().Get("search")
 	if channelName == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		s.WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("channel name is required"))
 		return
 	}
 	if !s.channelStore.ChannelExists(channelName) {
-		w.WriteHeader(http.StatusNotFound)
+		s.WriteJsonHttpResponse(w, http.StatusNotFound, NewErrorMessage("channel not found"))
 		return
 	}
 	var messages []*common.MessageEvent
-	var err error
 	if soughtPhrase == "" {
 		messages, err = s.messageStore.GetMessagesByChannel(channelName)
 	} else {
 		messages, err = s.messageStore.SearchMessagesInChannel(channelName, soughtPhrase)
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		s.WriteJsonHttpResponse(w, http.StatusInternalServerError, NewErrorMessage("Server error, please try again later"))
 		return
 	}
-	json.NewEncoder(w).Encode(messages)
+	s.WriteJsonHttpResponse(w, http.StatusOK, messages)
+}
+
+func (s *SockchatServer) WriteJsonHttpResponse(w http.ResponseWriter, statusCode int, data interface{}) error {
+	output, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	_, err = w.Write(output)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+	return nil
 }
 
 func (s *SockchatServer) authorizeConnection(request SocketMessage, conn *SockChatWS) error {
@@ -261,18 +281,17 @@ func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 	conn.Close()
 }
 
-func (s *SockchatServer) authorizeHTTPRequest(w http.ResponseWriter, r *http.Request) {
+func (s *SockchatServer) authorizeHTTPRequest(r *http.Request) error {
 	username, password, ok := r.BasicAuth()
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
+		return fmt.Errorf("no basic auth provided")
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
 	if !s.userProfiles.IsAuthValid(ctx, username, password) {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
+		return fmt.Errorf("invalid credentials")
 	}
+	return nil
 }
 
 type SockChatWS struct {

@@ -19,7 +19,7 @@ import (
 const (
 	sortByTimestamp = `"sort": [{"timestamp": {"order": "desc"}}]`
 	filterByChannel = `"filter": [{"term": {"channel.keyword": {"value": %s}}}]`
-	matchByPhrase   = `"must": {"match_phrase_prefix": {"text": %s}}`
+	matchByPhrase   = `"must": {"match": {"text": {"query": %s, "fuzziness": "AUTO"}}}`
 )
 
 type MessageStore struct {

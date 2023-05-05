@@ -22,7 +22,7 @@ func TestMessageStore(t *testing.T) {
 	store := &MessageStore{es, "test_messages"}
 
 	t.Run("can index new message into ES", func(t *testing.T) {
-		_, err := store.IndexMessage(&common.MessageEvent{Channel: "Foo", Author: "Bar", Text: "Baz", Timestamp: time.Now().Unix()})
+		_, err := store.IndexMessage(&common.MessageEvent{Channel: "Foo", Author: "Bar", Text: "FooBarBaz", Timestamp: time.Now().Unix()})
 		require.NoError(t, err)
 	})
 
@@ -34,12 +34,12 @@ func TestMessageStore(t *testing.T) {
 
 	t.Run("can search messages in channel by phrase", func(t *testing.T) {
 		// positive case
-		messages, err := store.SearchMessagesInChannel("Foo", "Ba")
+		messages, err := store.SearchMessagesInChannel("Foo", "FooBarBax")
 		require.NoError(t, err)
 		require.NotEmpty(t, messages)
 
 		// negative case
-		messages, err = store.SearchMessagesInChannel("Foo", "Qux")
+		messages, err = store.SearchMessagesInChannel("Foo", "FooBarQux")
 		require.NoError(t, err)
 		require.Empty(t, messages)
 	})

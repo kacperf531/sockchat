@@ -29,6 +29,5 @@ services:
 
 volumes:
   mysql:
-version: '3'
 
 
