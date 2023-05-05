@@ -44,8 +44,8 @@ func (s *ProfileService) Create(ctx context.Context, u *CreateProfileRequest) er
 	return nil
 }
 
-func (s *ProfileService) Edit(ctx context.Context, u *CreateProfileRequest) error {
-	userEntry := storage.User{Nick: u.Nick, Description: u.Description}
+func (s *ProfileService) Edit(ctx context.Context, u *EditProfileRequest) error {
+	userEntry := storage.User{Description: u.Description}
 
 	err := s.store.UpdateUser(ctx, &userEntry)
 	if err != nil {

@@ -70,10 +70,9 @@ func TestUserProfile(t *testing.T) {
 	})
 
 	t.Run("Calls to update existing user when edit request is OK", func(t *testing.T) {
-		req := &CreateProfileRequest{Nick: ValidUserNick, Description: "Bar", Password: ValidUserPassword}
+		req := &EditProfileRequest{Description: "Bar"}
 		err := service.Edit(context.TODO(), req)
 		assert.NoError(t, err)
-		assert.Equal(t, req.Nick, store.updateCalls[0].Nick)
 		assert.Equal(t, req.Description, store.updateCalls[0].Description)
 	})
 

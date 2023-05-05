@@ -43,7 +43,7 @@ type SockchatChannelStore interface {
 // SockchatProfileStore manages DB-stored user profiles
 type SockchatProfileStore interface {
 	Create(ctx context.Context, u *CreateProfileRequest) error
-	Edit(ctx context.Context, u *CreateProfileRequest) error
+	Edit(ctx context.Context, u *EditProfileRequest) error
 	IsAuthValid(ctx context.Context, nick, password string) bool
 }
 
@@ -93,10 +93,11 @@ func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.User
 	s.SetTimeoutValues(defaultTimeoutAuthorized, defaultTimeoutUnauthorized)
 
 	router := http.NewServeMux()
+	authenticate := NewAuthMiddleware(s.userProfiles)
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
 	router.Handle("/register", http.HandlerFunc(s.register))
-	router.Handle("/edit_profile", NewHttpAuthenticator(s.userProfiles, http.HandlerFunc(s.editProfile)))
-	router.Handle("/history", NewHttpAuthenticator(s.userProfiles, http.HandlerFunc(s.getChannelHistory)))
+	router.Handle("/edit_profile", authenticate(s.editProfile))
+	router.Handle("/history", authenticate(s.getChannelHistory))
 	s.Handler = router
 
 	return s
@@ -155,13 +156,7 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
-	userData := CreateProfileRequest{}
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
-		return
-	}
-	err = json.Unmarshal(bodyBytes, &userData)
+	userData, err := ReadCreateProfileRequest(r.Body)
 	if err != nil {
 		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
@@ -181,13 +176,7 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
-	userData := CreateProfileRequest{}
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
-		return
-	}
-	err = json.Unmarshal(bodyBytes, &userData)
+	userData, err := ReadEditProfileRequest(r.Body)
 	if err != nil {
 		WriteJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
 		return
@@ -255,26 +244,23 @@ func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 	conn.Close()
 }
 
-type HttpAuthenticator struct {
-	profiles SockchatProfileStore
-	handler  http.Handler
-}
-
-func (a *HttpAuthenticator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	username, password, ok := r.BasicAuth()
-	if !ok {
-		WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
+func NewAuthMiddleware(profiles SockchatProfileStore) func(next http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			username, password, ok := r.BasicAuth()
+			if !ok {
+				WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+			defer cancel()
+			if profiles.IsAuthValid(ctx, username, password) {
+				WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
+				return
+			}
+			next(w, r)
+		}
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
-	defer cancel()
-	if !a.profiles.IsAuthValid(ctx, username, password) {
-		WriteJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
-	}
-	a.handler.ServeHTTP(w, r)
-}
-
-func NewHttpAuthenticator(profiles SockchatProfileStore, handlerToWrap http.Handler) *HttpAuthenticator {
-	return &HttpAuthenticator{profiles, handlerToWrap}
 }
 
 func WriteJsonHttpResponse(w http.ResponseWriter, statusCode int, data interface{}) error {
@@ -292,6 +278,32 @@ func WriteJsonHttpResponse(w http.ResponseWriter, statusCode int, data interface
 		return nil
 	}
 	return nil
+}
+
+func ReadCreateProfileRequest(body io.ReadCloser) (CreateProfileRequest, error) {
+	userData := CreateProfileRequest{}
+	bodyBytes, err := io.ReadAll(body)
+	if err != nil {
+		return userData, err
+	}
+	err = json.Unmarshal(bodyBytes, &userData)
+	if err != nil {
+		return userData, err
+	}
+	return userData, nil
+}
+
+func ReadEditProfileRequest(body io.ReadCloser) (EditProfileRequest, error) {
+	userData := EditProfileRequest{}
+	bodyBytes, err := io.ReadAll(body)
+	if err != nil {
+		return userData, err
+	}
+	err = json.Unmarshal(bodyBytes, &userData)
+	if err != nil {
+		return userData, err
+	}
+	return userData, nil
 }
 
 type SockChatWS struct {
