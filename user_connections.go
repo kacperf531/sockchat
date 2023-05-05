@@ -3,6 +3,9 @@ package sockchat
 import (
 	"log"
 	"sync"
+	"time"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 // SockchatUserHandler manages user actions
@@ -115,13 +118,12 @@ func (u *UserHandler) HandleRequests() {
 			}
 			req.errCallback <- err
 		case SendMessageAction:
-			channel, err := u.channelStore.GetChannel(req.payload.(*SendMessageRequest).Channel)
-			if !channel.GetMembers()[u] {
+			reqFields := req.payload.(*SendMessageRequest)
+			if !u.channelStore.IsUserPresentIn(u, reqFields.Channel) {
 				req.errCallback <- ErrUserNotInChannel
 				continue
 			}
-			req.errCallback <- err
-			channel.MessageMembers(NewSocketMessage(NewMessageEvent, MessageEvent{req.payload.(*SendMessageRequest).Text, req.payload.(*SendMessageRequest).Channel, u.getNick()}))
+			req.errCallback <- u.channelStore.MessageChannel(&common.MessageEvent{Text: reqFields.Text, Channel: reqFields.Channel, Author: u.getNick(), Timestamp: time.Now().Unix()})
 		}
 	}
 }

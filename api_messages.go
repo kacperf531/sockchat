@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 const (
@@ -46,17 +48,13 @@ type SendMessageRequest struct {
 	Text    string `json:"text"`
 }
 
-// For messages sent from server
-type MessageEvent struct {
-	Text    string `json:"text"`
-	Channel string `json:"channel"`
-	Author  string `json:"author"`
-}
-
-// For create & edit profile web API requests
-type UserProfile struct {
+type CreateProfileRequest struct {
 	Nick        string `json:"nick"`
 	Password    string `json:"password"`
+	Description string `json:"description"`
+}
+
+type EditProfileRequest struct {
 	Description string `json:"description"`
 }
 
@@ -96,11 +94,29 @@ func UnmarshalMessageRequest(requestBytes json.RawMessage) (*SendMessageRequest,
 	return &messageRequest, nil
 }
 
-func UnmarshalMessageEvent(requestBytes json.RawMessage) *MessageEvent {
-	messageEvent := MessageEvent{}
+func UnmarshalMessageEvent(requestBytes json.RawMessage) *common.MessageEvent {
+	messageEvent := common.MessageEvent{}
 	if err := json.Unmarshal(requestBytes, &messageEvent); err != nil {
 		log.Printf("error while unmarshaling request for sending message: %v", err)
 		return nil
 	}
 	return &messageEvent
+}
+
+func UnmarshalCreateProfileRequest(requestBytes json.RawMessage) *CreateProfileRequest {
+	createProfileRequest := CreateProfileRequest{}
+	if err := json.Unmarshal(requestBytes, &createProfileRequest); err != nil {
+		log.Printf("error while unmarshaling request for creating profile: %v", err)
+		return nil
+	}
+	return &createProfileRequest
+}
+
+func UnmarshalEditProfileRequest(requestBytes json.RawMessage) *EditProfileRequest {
+	editProfileRequest := EditProfileRequest{}
+	if err := json.Unmarshal(requestBytes, &editProfileRequest); err != nil {
+		log.Printf("error while unmarshaling request for editing profile: %v", err)
+		return nil
+	}
+	return &editProfileRequest
 }

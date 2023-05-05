@@ -3,7 +3,10 @@ package sockchat
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
+
+	"github.com/kacperf531/sockchat/common"
 )
 
 var ErrChannelDoesNotExist = errors.New("channel does not exist")
@@ -12,15 +15,19 @@ var ErrUserAlreadyInChannel = errors.New("user is already member of this channel
 var ErrEmptyChannelName = errors.New("channel's `name` is missing")
 
 type ChannelStore struct {
-	Channels map[string]*Channel
-	lock     sync.RWMutex
+	Channels     map[string]*Channel
+	lock         sync.RWMutex
+	messageStore SockchatMessageStore
 }
 
-func NewChannelStore() (*ChannelStore, error) {
-	return &ChannelStore{Channels: make(map[string]*Channel)}, nil
+func NewChannelStore(messageStore SockchatMessageStore) (*ChannelStore, error) {
+	return &ChannelStore{Channels: make(map[string]*Channel), messageStore: messageStore}, nil
 }
 
-func (s *ChannelStore) GetChannel(name string) (*Channel, error) {
+func (s *ChannelStore) getChannel(name string) (*Channel, error) {
+	if err := s.validateChannelName(name); err != nil {
+		return nil, err
+	}
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	channel := s.Channels[name]
@@ -31,8 +38,8 @@ func (s *ChannelStore) GetChannel(name string) (*Channel, error) {
 }
 
 func (s *ChannelStore) CreateChannel(channelName string) error {
-	if channelName == "" {
-		return ErrEmptyChannelName
+	if err := s.validateChannelName(channelName); err != nil {
+		return err
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -44,14 +51,9 @@ func (s *ChannelStore) CreateChannel(channelName string) error {
 }
 
 func (s *ChannelStore) AddUserToChannel(channelName string, user SockchatUserHandler) error {
-	if channelName == "" {
-		return ErrEmptyChannelName
-	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	channel := s.Channels[channelName]
-	if channel == nil {
-		return ErrChannelDoesNotExist
+	channel, err := s.getChannel(channelName)
+	if err != nil {
+		return err
 	}
 	if channel.HasMember(user) {
 		return ErrUserAlreadyInChannel
@@ -62,15 +64,10 @@ func (s *ChannelStore) AddUserToChannel(channelName string, user SockchatUserHan
 }
 
 func (s *ChannelStore) RemoveUserFromChannel(channelName string, user SockchatUserHandler) error {
-	if channelName == "" {
-		return ErrEmptyChannelName
-	}
-	channel, err := s.GetChannel(channelName)
+	channel, err := s.getChannel(channelName)
 	if err != nil {
 		return err
 	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	if !channel.HasMember(user) {
 		return ErrUserNotInChannel
 	}
@@ -86,6 +83,42 @@ func (s *ChannelStore) DisconnectUser(user SockchatUserHandler) {
 	for channelName := range s.Channels {
 		go s.RemoveUserFromChannel(channelName, user)
 	}
+}
+
+func (s *ChannelStore) ChannelExists(channelName string) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.Channels[channelName] != nil
+}
+
+func (s *ChannelStore) IsUserPresentIn(user SockchatUserHandler, channelName string) bool {
+	channel, err := s.getChannel(channelName)
+	if err != nil {
+		return false
+	}
+	return channel.HasMember(user)
+}
+
+func (s *ChannelStore) MessageChannel(message *common.MessageEvent) error {
+	channel, err := s.getChannel(message.Channel)
+	if err != nil {
+		return err
+	}
+	go func() {
+		_, err := s.messageStore.IndexMessage(message)
+		if err != nil {
+			log.Printf("warning: failed to index message: %v", err)
+		}
+	}()
+	go channel.MessageMembers(NewSocketMessage(NewMessageEvent, message))
+	return nil
+}
+
+func (s *ChannelStore) validateChannelName(channelName string) error {
+	if channelName == "" {
+		return ErrEmptyChannelName
+	}
+	return nil
 }
 
 type Channel struct {
@@ -121,7 +154,6 @@ func (c *Channel) HasMember(user SockchatUserHandler) bool {
 }
 
 func (c *Channel) MessageMembers(message SocketMessage) {
-	// TODO write message to ES here
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	for user := range c.members {

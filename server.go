@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/kacperf531/sockchat/errors"
+	"github.com/kacperf531/sockchat/common"
 	"github.com/kacperf531/sockchat/storage"
 )
 
@@ -31,18 +31,26 @@ var wsUpgrader = websocket.Upgrader{
 
 // SockchatChannelStore manages chat channels (rooms) and dispatches messages among their members
 type SockchatChannelStore interface {
-	GetChannel(name string) (*Channel, error)
 	CreateChannel(name string) error
 	AddUserToChannel(channel string, user SockchatUserHandler) error
 	RemoveUserFromChannel(channel string, user SockchatUserHandler) error
+	MessageChannel(msg *common.MessageEvent) error
 	DisconnectUser(user SockchatUserHandler)
+	IsUserPresentIn(user SockchatUserHandler, channel string) bool
+	ChannelExists(name string) bool
 }
 
 // SockchatProfileStore manages DB-stored user profiles
 type SockchatProfileStore interface {
-	Create(ctx context.Context, u *UserProfile) error
-	Edit(ctx context.Context, u *UserProfile) error
+	Create(ctx context.Context, u *CreateProfileRequest) error
+	Edit(ctx context.Context, u *EditProfileRequest) error
 	IsAuthValid(ctx context.Context, nick, password string) bool
+}
+
+// SockchatMessageStore manages messages in ES
+type SockchatMessageStore interface {
+	IndexMessage(msg *common.MessageEvent) (string, error)
+	FindMessages(channel, query string) ([]*common.MessageEvent, error)
 }
 
 // SockchatUserManager manages user handlers that store connections and send messages to them
@@ -56,6 +64,7 @@ type SockchatServer struct {
 	http.Handler
 	channelStore        SockchatChannelStore
 	userProfiles        SockchatProfileStore
+	messageStore        SockchatMessageStore
 	authorizedUsers     SockchatUserManager
 	timeoutUnauthorized time.Duration
 	timeoutAuthorized   time.Duration
@@ -73,18 +82,21 @@ func NewErrorMessage(details string) SocketMessage {
 	return NewSocketMessage(InvalidRequestEvent, map[string]string{"details": details})
 }
 
-func NewSockChatServer(store SockchatChannelStore, userStore storage.UserStore) *SockchatServer {
+func NewSockChatServer(channelStore SockchatChannelStore, userStore storage.UserStore, messageStore SockchatMessageStore) *SockchatServer {
 	s := new(SockchatServer)
-	s.channelStore = store
+	s.channelStore = channelStore
 	s.userProfiles = &ProfileService{store: userStore}
-	s.authorizedUsers = NewConnectedUsersPool(store)
+	s.messageStore = messageStore
+	s.authorizedUsers = NewConnectedUsersPool(channelStore)
 
 	s.SetTimeoutValues(defaultTimeoutAuthorized, defaultTimeoutUnauthorized)
 
 	router := http.NewServeMux()
+	authenticate := newAuthMiddleware(s.userProfiles)
 	router.Handle("/ws", http.HandlerFunc(s.webSocket))
 	router.Handle("/register", http.HandlerFunc(s.register))
-	router.Handle("/edit_profile", http.HandlerFunc(s.editProfile))
+	router.Handle("/edit_profile", authenticate(s.editProfile))
+	router.Handle("/history", authenticate(s.getChannelHistory))
 	s.Handler = router
 
 	return s
@@ -102,121 +114,96 @@ func (s *SockchatServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	for {
 		receivedMsg, err := conn.ReadSocketMsg()
 		if err != nil {
-			if os.IsTimeout(err) {
-				conn.WriteSocketMsg(NewSocketMessage("connection_timed_out", "{}"))
-			}
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
 			break
 		}
 
-		if !conn.authorized {
-			err := s.authorizeConnection(*receivedMsg, conn)
+		if conn.authorized {
+			conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
+			req, err := parseWebsocketMessage(*receivedMsg)
+			if err != nil {
+				conn.WriteSocketMsg(NewErrorMessage(err.Error()))
+				continue
+			}
+			err = conn.userHandler.MakeRequest(receivedMsg.Action, req)
 			if err != nil {
 				conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 			}
 			continue
 		}
 
-		conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
-		var req any
-		switch receivedMsg.Action {
-		case CreateAction, JoinAction, LeaveAction:
-			req, err = UnmarshalChannelRequest(receivedMsg.Payload)
-		case SendMessageAction:
-			req, err = UnmarshalMessageRequest(receivedMsg.Payload)
-		default:
-			conn.WriteSocketMsg(NewErrorMessage(InvalidRequestEvent))
-			continue
-		}
-		if err != nil {
-			log.Print("error while unmarshaling request: ", err.Error())
-			conn.WriteSocketMsg(NewErrorMessage(InvalidRequestEvent))
-			continue
-		}
-		err = conn.userHandler.MakeRequest(receivedMsg.Action, req)
+		err = s.authorizeWebsocket(*receivedMsg, conn)
 		if err != nil {
 			conn.WriteSocketMsg(NewErrorMessage(err.Error()))
 		}
+		conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
 	}
 }
 
 func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
-	userData := UserProfile{}
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Printf("error reading register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	err = json.Unmarshal(bodyBytes, &userData)
-	if err != nil {
-		log.Printf("error unmarshaling register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	userData := readCreateProfileRequest(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
-	err = s.userProfiles.Create(ctx, &userData)
+	err := s.userProfiles.Create(ctx, userData)
 	if err != nil {
-		if err == errors.ResourceConflict {
-			w.WriteHeader(http.StatusConflict)
+		if err == common.ErrResourceConflict {
+			writeJsonHttpResponse(w, http.StatusConflict, NewErrorMessage("user already exists"))
 		} else {
-			w.WriteHeader(http.StatusUnprocessableEntity)
+			writeJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		}
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
+	writeJsonHttpResponse(w, http.StatusCreated, "")
 }
 
 func (s *SockchatServer) editProfile(w http.ResponseWriter, r *http.Request) {
-	userData := UserProfile{}
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Printf("error reading register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	err = json.Unmarshal(bodyBytes, &userData)
-	if err != nil {
-		log.Printf("error unmarshaling register request: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	userData := readEditProfileRequest(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
 	defer cancel()
-	err = s.userProfiles.Edit(ctx, &userData)
+	err := s.userProfiles.Edit(ctx, userData)
 	if err != nil {
-		if err == errors.Unauthorized {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusUnprocessableEntity)
+		writeJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
 		return
 	}
-	w.WriteHeader(http.StatusOK)
-
+	writeJsonHttpResponse(w, http.StatusOK, "")
 }
 
-func (s *SockchatServer) authorizeConnection(request SocketMessage, conn *SockChatWS) error {
+func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Request) {
+	channelName := r.URL.Query().Get("channel")
+	if !s.channelStore.ChannelExists(channelName) {
+		writeJsonHttpResponse(w, http.StatusNotFound, NewErrorMessage("channel not found"))
+		return
+	}
+	soughtPhrase := r.URL.Query().Get("search")
+	messages, err := s.messageStore.FindMessages(channelName, soughtPhrase)
+	if err != nil {
+		writeJsonHttpResponse(w, http.StatusInternalServerError, NewErrorMessage("Server error, please try again later"))
+		return
+	}
+	writeJsonHttpResponse(w, http.StatusOK, messages)
+}
 
+func (s *SockchatServer) authorizeWebsocket(request SocketMessage, conn *SockChatWS) error {
+	if request.Action == LoginAction {
+		u, err := s.loginUser(request)
+		if err == nil {
+			conn.authorized = true
+			s.authorizedUsers.AddConnection(conn, u.Nick)
+			conn.WriteSocketMsg(NewSocketMessage("logged_in:"+u.Nick, "{}"))
+			conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
+		}
+		return err
+	}
+	return fmt.Errorf("you must log in first using " + LoginAction + " action")
+}
+
+func (s *SockchatServer) loginUser(request SocketMessage) (*common.PublicProfile, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ResponseDeadline)
 	defer cancel()
-
-	if request.Action != LoginAction {
-		return fmt.Errorf("you must log in first using " + LoginAction + " action")
-	}
 	req := UnmarshalLoginRequest(request.Payload)
-	if !s.userProfiles.IsAuthValid(ctx, req.Nick, req.Password) {
-		return fmt.Errorf("login rejected: invalid credentials")
+	if s.userProfiles.IsAuthValid(ctx, req.Nick, req.Password) {
+		return &common.PublicProfile{Nick: req.Nick}, nil
 	}
-
-	conn.authorized = true
-	s.authorizedUsers.AddConnection(conn, req.Nick)
-	conn.WriteSocketMsg(NewSocketMessage("logged_in:"+req.Nick, "{}"))
-	conn.SetReadDeadline(time.Now().Add(s.timeoutAuthorized))
-	return nil
+	return nil, fmt.Errorf("login rejected: invalid credentials")
 }
 
 func (s *SockchatServer) shutConnection(conn *SockChatWS) {
@@ -224,6 +211,71 @@ func (s *SockchatServer) shutConnection(conn *SockChatWS) {
 		s.authorizedUsers.RemoveConnection(conn)
 	}
 	conn.Close()
+}
+
+func newAuthMiddleware(profiles SockchatProfileStore) func(next http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			username, password, ok := r.BasicAuth()
+			if !ok {
+				writeJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), ResponseDeadline)
+			defer cancel()
+			if !profiles.IsAuthValid(ctx, username, password) {
+				writeJsonHttpResponse(w, http.StatusUnauthorized, NewErrorMessage("unauthorized"))
+				return
+			}
+			next(w, r)
+		}
+	}
+}
+
+func writeJsonHttpResponse(w http.ResponseWriter, statusCode int, data interface{}) error {
+	output, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	_, err = w.Write(output)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+	return nil
+}
+
+func readCreateProfileRequest(w http.ResponseWriter, r *http.Request) *CreateProfileRequest {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		return nil
+	}
+	return UnmarshalCreateProfileRequest(bodyBytes)
+}
+
+func readEditProfileRequest(w http.ResponseWriter, r *http.Request) *EditProfileRequest {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		return nil
+	}
+	return UnmarshalEditProfileRequest(bodyBytes)
+}
+
+func parseWebsocketMessage(msg SocketMessage) (interface{}, error) {
+	switch msg.Action {
+	case CreateAction, JoinAction, LeaveAction:
+		return UnmarshalChannelRequest(msg.Payload)
+	case SendMessageAction:
+		return UnmarshalMessageRequest(msg.Payload)
+	default:
+		return nil, fmt.Errorf(InvalidRequestEvent)
+	}
 }
 
 type SockChatWS struct {
@@ -253,9 +305,18 @@ func (w *SockChatWS) ReadMsg() ([]byte, error) {
 
 func (w *SockChatWS) ReadSocketMsg() (*SocketMessage, error) {
 	msgBytes, err := w.ReadMsg()
+	if err != nil {
+		if os.IsTimeout(err) {
+			w.WriteSocketMsg(NewSocketMessage("connection_timed_out", "{}"))
+		}
+		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			log.Printf("error while reading messages from websocket: %v", err)
+		}
+		return nil, err
+	}
 	msg := &SocketMessage{}
 	json.Unmarshal(msgBytes, &msg)
-	return msg, err
+	return msg, nil
 }
 
 func (w *SockChatWS) WriteSocketMsg(m SocketMessage) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/kacperf531/sockchat/errors"
+	"github.com/kacperf531/sockchat/common"
 	"github.com/kacperf531/sockchat/storage"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -19,7 +19,7 @@ type ProfileService struct {
 	store storage.UserStore
 }
 
-func (s *ProfileService) Create(ctx context.Context, u *UserProfile) error {
+func (s *ProfileService) Create(ctx context.Context, u *CreateProfileRequest) error {
 	if u.Password == "" {
 		return fmt.Errorf("password is required")
 	}
@@ -35,7 +35,7 @@ func (s *ProfileService) Create(ctx context.Context, u *UserProfile) error {
 
 	err = s.store.InsertUser(ctx, &userEntry)
 	if err != nil {
-		if err == errors.ResourceConflict {
+		if err == common.ErrResourceConflict {
 			return err
 		}
 		log.Printf("error adding new user to db: %v", err)
@@ -44,12 +44,8 @@ func (s *ProfileService) Create(ctx context.Context, u *UserProfile) error {
 	return nil
 }
 
-func (s *ProfileService) Edit(ctx context.Context, u *UserProfile) error {
-	if !s.IsAuthValid(ctx, u.Nick, u.Password) {
-		return errors.Unauthorized
-	}
-
-	userEntry := storage.User{Nick: u.Nick, Description: u.Description}
+func (s *ProfileService) Edit(ctx context.Context, u *EditProfileRequest) error {
+	userEntry := storage.User{Description: u.Description}
 
 	err := s.store.UpdateUser(ctx, &userEntry)
 	if err != nil {

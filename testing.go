@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kacperf531/sockchat/common"
 )
 
 const (
@@ -104,11 +105,11 @@ func (store *StubChannelStore) CreateChannel(name string) error {
 func (store *StubChannelStore) DisconnectUser(user SockchatUserHandler) {
 }
 
-func (store *StubChannelStore) GetChannel(name string) (*Channel, error) {
-	return &Channel{}, nil
+func (store *StubChannelStore) ChannelExists(name string) bool {
+	return name != "not_exists"
 }
 
-func (store *StubChannelStore) AddUserToChannel(name string, user SockchatUserHandler) error {
+func (s *StubChannelStore) AddUserToChannel(name string, user SockchatUserHandler) error {
 	if name == ChannelWithUser {
 		return ErrUserAlreadyInChannel
 	}
@@ -116,10 +117,41 @@ func (store *StubChannelStore) AddUserToChannel(name string, user SockchatUserHa
 	return nil
 }
 
-func (store *StubChannelStore) RemoveUserFromChannel(name string, user SockchatUserHandler) error {
+func (s *StubChannelStore) RemoveUserFromChannel(name string, user SockchatUserHandler) error {
 	if name == ChannelWithoutUser {
 		return ErrUserNotInChannel
 	}
 	user.Write(NewSocketMessage(UserLeftChannelEvent, ChannelUserChangeEvent{name, user.getNick()}))
 	return nil
+}
+
+func (s *StubChannelStore) IsUserPresentIn(user SockchatUserHandler, channel string) bool {
+	return false
+}
+
+func (store *StubChannelStore) MessageChannel(message *common.MessageEvent) error {
+	return nil
+}
+
+type messageStoreStub struct {
+	messages []*common.MessageEvent
+	lock     sync.Mutex
+}
+
+func (s *messageStoreStub) FindMessages(channel, soughtPhrase string) ([]*common.MessageEvent, error) {
+	if soughtPhrase != "" {
+		// just assume that the results are filtered out
+		return nil, nil
+	}
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	// simplified stub - channel filtering & sorting logic is in ES
+	return s.messages, nil
+}
+
+func (s *messageStoreStub) IndexMessage(*common.MessageEvent) (string, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.messages = append(s.messages, &common.MessageEvent{})
+	return "", nil
 }

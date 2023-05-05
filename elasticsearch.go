@@ -1,19 +1,20 @@
-package main
+package sockchat
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/elastic/go-elasticsearch/v7"
-	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
 )
 
-func testElasticSearchConnection() {
+func TestElasticSearchConnection() {
 	fmt.Print("\n#######################################\n")
 	fmt.Print("# Testing ElasticSearch connection... #\n")
 	fmt.Print("#######################################\n")
