@@ -7,19 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strconv"
-	"strings"
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/kacperf531/sockchat/common"
 	"github.com/mitchellh/mapstructure"
-)
-
-const (
-	sortByTimestamp = `"sort": [{"timestamp": {"order": "desc"}}]`
-	filterByChannel = `"filter": [{"term": {"channel.keyword": {"value": %s}}}]`
-	matchByPhrase   = `"must": {"match": {"text": {"query": %s, "fuzziness": "AUTO"}}}`
 )
 
 type MessageStore struct {
@@ -31,22 +23,65 @@ func NewMessageStore(es *elasticsearch.Client, indexName string) *MessageStore {
 	return &MessageStore{es, indexName}
 }
 
+type searchQuery struct {
+	Query struct {
+		Bool boolQueryFilter `json:"bool"`
+	} `json:"query"`
+	Sort []timestampOrder `json:"sort"`
+}
+
+type boolQueryFilter struct {
+	Filter []termFilter `json:"filter"`
+	Must   *must        `json:"must,omitempty"`
+}
+
+type must struct {
+	Match struct {
+		Text struct {
+			Query     string `json:"query"`
+			Fuzziness string `json:"fuzziness"`
+		} `json:"text"`
+	} `json:"match"`
+}
+
+type termFilter struct {
+	Term struct {
+		Channel struct {
+			Value string `json:"value"`
+		} `json:"channel.keyword"`
+	} `json:"term"`
+}
+
+type timestampOrder struct {
+	Timestamp struct {
+		Order string `json:"order"`
+	} `json:"timestamp"`
+}
+
 func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader {
-	var b strings.Builder
+	var q searchQuery
 
-	b.WriteString("{\n")
-	b.WriteString(`"query": {`)
-	b.WriteString(`"bool": {`)
-	fmt.Fprintf(&b, filterByChannel, strconv.Quote(channel))
 	if soughtPhrase != "" {
-		fmt.Fprintf(&b, ",%s", fmt.Sprintf(matchByPhrase, strconv.Quote(soughtPhrase)))
+		m := &must{}
+		m.Match.Text.Query = soughtPhrase
+		m.Match.Text.Fuzziness = "AUTO"
+		q.Query.Bool.Must = m
 	}
-	b.WriteString("}")
-	b.WriteString("},")
-	b.WriteString(sortByTimestamp)
-	b.WriteString("\n}")
 
-	return strings.NewReader(b.String())
+	var tf termFilter
+	tf.Term.Channel.Value = channel
+	q.Query.Bool.Filter = []termFilter{tf}
+
+	var ts timestampOrder
+	ts.Timestamp.Order = "desc"
+	q.Sort = []timestampOrder{ts}
+
+	qJson, err := json.Marshal(&q)
+	if err != nil {
+		log.Fatalf("Error parsing the elastic search query: %s", err)
+	}
+
+	return bytes.NewReader(qJson)
 }
 
 func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, error) {
