@@ -13,6 +13,7 @@ var ErrChannelDoesNotExist = errors.New("channel does not exist")
 var ErrUserNotInChannel = errors.New("user is not member of this channel")
 var ErrUserAlreadyInChannel = errors.New("user is already member of this channel")
 var ErrEmptyChannelName = errors.New("channel's `name` is missing")
+var ErrMessageNotSent = errors.New("message could not be sent")
 
 type ChannelStore struct {
 	Channels     map[string]*Channel
@@ -107,6 +108,7 @@ func (s *ChannelStore) MessageChannel(message *common.MessageEvent) error {
 	_, err = s.messageStore.IndexMessage(message)
 	if err != nil {
 		log.Printf("warning: failed to index message: %v", err)
+		return ErrMessageNotSent
 	}
 
 	go channel.MessageMembers(NewSocketMessage(NewMessageEvent, message))
