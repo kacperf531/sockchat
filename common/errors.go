@@ -2,5 +2,6 @@ package common
 
 import "errors"
 
-var ErrUnauthorized = errors.New("unauthorized")
-var ErrResourceConflict = errors.New("resource already exists")
+var ErrNickAlreadyUsed = errors.New("this nick is already used")
+var ErrInvalidRequest = errors.New("invalid request")
+var ErrInternal = errors.New("internal error")

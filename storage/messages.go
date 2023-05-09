@@ -58,7 +58,7 @@ type timestampOrder struct {
 	} `json:"timestamp"`
 }
 
-func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader {
+func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) (*bytes.Reader, error) {
 	var q searchQuery
 
 	if soughtPhrase != "" {
@@ -78,10 +78,11 @@ func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) io.Reader 
 
 	qJson, err := json.Marshal(&q)
 	if err != nil {
-		log.Fatalf("Error parsing the elastic search query: %s", err)
+		log.Printf("Error marshalling query to es: %s", err)
+		return nil, err
 	}
 
-	return bytes.NewReader(qJson)
+	return bytes.NewReader(qJson), nil
 }
 
 func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, error) {
@@ -94,27 +95,26 @@ func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, 
 		s.es.Search.WithPretty(),
 	)
 	if err != nil {
-		log.Fatalf("Error getting response: %s", err)
+		log.Printf("Error getting response: %s", err)
+		return nil, err
 	}
 	defer res.Body.Close()
 
 	if res.IsError() {
 		var e map[string]interface{}
 		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
-			log.Fatalf("Error parsing the response body: %s", err)
+			log.Printf("error parsing the response body: %s", err)
+			return nil, err
 		} else {
-			log.Fatalf(
-				"[%s] %s: %s",
-				res.Status(),
-				e["error"].(map[string]interface{})["type"],
-				e["error"].(map[string]interface{})["reason"],
-			)
+			log.Printf("error returned from es: %s", e["error"].(map[string]interface{})["reason"])
+			return nil, err
 		}
 	}
 
 	var r map[string]interface{}
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		log.Fatalf("Error parsing the response body: %s", err)
+		log.Printf("error parsing the es response: %s", err)
+		return nil, err
 	}
 	var results []*common.MessageEvent
 	for _, hit := range r["hits"].(map[string]interface{})["hits"].([]interface{}) {
@@ -123,7 +123,8 @@ func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, 
 		if err == nil {
 			results = append(results, msg)
 		} else {
-			log.Printf("Error decoding message: %v", err)
+			log.Printf("error decoding message from es: %s", err)
+			return nil, err
 		}
 	}
 
@@ -131,13 +132,20 @@ func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, 
 }
 
 func (s *MessageStore) FindMessages(channel, phrase string) ([]*common.MessageEvent, error) {
-	query := s.buildSearchQuery(channel, phrase)
-	return s.runSearchQuery(query)
+	query, err := s.buildSearchQuery(channel, phrase)
+	if err != nil {
+		return nil, common.ErrInvalidRequest
+	}
+	results, err := s.runSearchQuery(query)
+	if err != nil {
+		return nil, common.ErrInternal
+	}
+	return results, nil
 }
 func (s *MessageStore) IndexMessage(msg *common.MessageEvent) (string, error) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return "", fmt.Errorf("could not save message due to marshalling error")
+		return "", common.ErrInvalidRequest
 	}
 
 	req := esapi.IndexRequest{

@@ -148,7 +148,7 @@ func (s *SockchatServer) register(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	err := s.userProfiles.Create(ctx, userData)
 	if err != nil {
-		if err == common.ErrResourceConflict {
+		if err == common.ErrNickAlreadyUsed {
 			writeJsonHttpResponse(w, http.StatusConflict, NewErrorMessage("user already exists"))
 		} else {
 			writeJsonHttpResponse(w, http.StatusUnprocessableEntity, NewErrorMessage(err.Error()))
@@ -198,7 +198,11 @@ func (s *SockchatServer) getChannelHistory(w http.ResponseWriter, r *http.Reques
 	soughtPhrase := r.URL.Query().Get("search")
 	messages, err := s.messageStore.FindMessages(channelName, soughtPhrase)
 	if err != nil {
-		writeJsonHttpResponse(w, http.StatusInternalServerError, NewErrorMessage("Server error, please try again later"))
+		if err == common.ErrInvalidRequest {
+			writeJsonHttpResponse(w, http.StatusBadRequest, NewErrorMessage("invalid request"))
+		} else {
+			writeJsonHttpResponse(w, http.StatusInternalServerError, NewErrorMessage("internal server error"))
+		}
 		return
 	}
 	writeJsonHttpResponse(w, http.StatusOK, messages)

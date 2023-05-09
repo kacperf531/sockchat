@@ -19,7 +19,7 @@ type userStoreDouble struct {
 func (s *userStoreDouble) InsertUser(ctx context.Context, u *storage.User) error {
 	s.createCalls = append(s.createCalls, u)
 	if u.Nick == "already_exists" {
-		return common.ErrResourceConflict
+		return common.ErrNickAlreadyUsed
 	}
 	return nil
 }
@@ -65,7 +65,7 @@ func TestUserProfile(t *testing.T) {
 	t.Run("Returns error on already existing nick", func(t *testing.T) {
 		duplicateNickUser := &CreateProfileRequest{Nick: "already_exists", Password: "foo420", Description: "description goes here"}
 		err := service.Create(context.TODO(), duplicateNickUser)
-		assert.EqualError(t, err, common.ErrResourceConflict.Error())
+		assert.EqualError(t, err, common.ErrNickAlreadyUsed.Error())
 	})
 
 	t.Run("Returns error on empty nick/password", func(t *testing.T) {

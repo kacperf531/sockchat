@@ -39,7 +39,7 @@ func (s *ProfileService) Create(ctx context.Context, u *CreateProfileRequest) er
 
 	err = s.store.InsertUser(ctx, &userEntry)
 	if err != nil {
-		if err == common.ErrResourceConflict {
+		if err == common.ErrNickAlreadyUsed {
 			return err
 		}
 		log.Printf("error adding new user to db: %v", err)

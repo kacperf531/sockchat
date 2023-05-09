@@ -41,7 +41,7 @@ func (s *userStore) InsertUser(ctx context.Context, u *User) error {
 	if err != nil {
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			if driverErr.Number == mysqlerr.ER_DUP_ENTRY {
-				return common.ErrResourceConflict
+				return common.ErrNickAlreadyUsed
 			}
 		}
 		return fmt.Errorf("could not insert row: %w", err)
