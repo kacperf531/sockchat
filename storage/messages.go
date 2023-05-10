@@ -10,7 +10,7 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
-	"github.com/kacperf531/sockchat/common"
+	"github.com/kacperf531/sockchat/api"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -85,10 +85,10 @@ func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) (*bytes.Re
 	return bytes.NewReader(qJson), nil
 }
 
-func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, error) {
+func (s *MessageStore) runSearchQuery(ctx context.Context, query io.Reader) (api.ChannelHistory, error) {
 
 	res, err := s.es.Search(
-		s.es.Search.WithContext(context.Background()),
+		s.es.Search.WithContext(ctx),
 		s.es.Search.WithIndex(s.indexName),
 		s.es.Search.WithBody(query),
 		s.es.Search.WithTrackTotalHits(true),
@@ -116,9 +116,9 @@ func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, 
 		log.Printf("error parsing the es response: %s", err)
 		return nil, err
 	}
-	var results []*common.MessageEvent
+	var results api.ChannelHistory
 	for _, hit := range r["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		msg := &common.MessageEvent{}
+		msg := &api.MessageEvent{}
 		err := mapstructure.Decode(hit.(map[string]interface{})["_source"], &msg)
 		if err == nil {
 			results = append(results, msg)
@@ -131,21 +131,21 @@ func (s *MessageStore) runSearchQuery(query io.Reader) ([]*common.MessageEvent, 
 	return results, nil
 }
 
-func (s *MessageStore) FindMessages(channel, phrase string) ([]*common.MessageEvent, error) {
+func (s *MessageStore) FindMessages(ctx context.Context, channel, phrase string) (api.ChannelHistory, error) {
 	query, err := s.buildSearchQuery(channel, phrase)
 	if err != nil {
-		return nil, common.ErrInvalidRequest
+		return nil, api.ErrInvalidRequest
 	}
-	results, err := s.runSearchQuery(query)
+	results, err := s.runSearchQuery(ctx, query)
 	if err != nil {
-		return nil, common.ErrInternal
+		return nil, api.ErrInternal
 	}
 	return results, nil
 }
-func (s *MessageStore) IndexMessage(msg *common.MessageEvent) (string, error) {
+func (s *MessageStore) IndexMessage(msg *api.MessageEvent) (string, error) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return "", common.ErrInvalidRequest
+		return "", api.ErrInvalidRequest
 	}
 
 	req := esapi.IndexRequest{

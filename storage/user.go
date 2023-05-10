@@ -9,12 +9,12 @@ import (
 	"github.com/VividCortex/mysqlerr"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/kacperf531/sockchat/common"
+	"github.com/kacperf531/sockchat/api"
 )
 
 type UserStore interface {
 	InsertUser(context.Context, *User) error
-	UpdatePublicProfile(context.Context, *common.PublicProfile) error
+	UpdatePublicProfile(context.Context, *api.PublicProfile) error
 	SelectUser(context.Context, string) (*User, error)
 }
 
@@ -41,7 +41,7 @@ func (s *userStore) InsertUser(ctx context.Context, u *User) error {
 	if err != nil {
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			if driverErr.Number == mysqlerr.ER_DUP_ENTRY {
-				return common.ErrNickAlreadyUsed
+				return api.ErrNickAlreadyUsed
 			}
 		}
 		return fmt.Errorf("could not insert row: %w", err)
@@ -54,7 +54,7 @@ func (s *userStore) InsertUser(ctx context.Context, u *User) error {
 	return nil
 }
 
-func (s *userStore) UpdatePublicProfile(ctx context.Context, u *common.PublicProfile) error {
+func (s *userStore) UpdatePublicProfile(ctx context.Context, u *api.PublicProfile) error {
 	const stmt = "UPDATE users SET description = ? WHERE nick = ?;  "
 
 	res, err := s.db.ExecContext(ctx, stmt, u.Description, u.Nick)

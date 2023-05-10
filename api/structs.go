@@ -1,4 +1,4 @@
-package common
+package api
 
 // For messages sent from server
 type MessageEvent struct {
@@ -12,3 +12,7 @@ type PublicProfile struct {
 	Nick        string `json:"nick"`
 	Description string `json:"description"`
 }
+
+type ChannelHistory []*MessageEvent
+
+type EmptyMessage struct{}

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
-	"github.com/kacperf531/sockchat/common"
+	"github.com/kacperf531/sockchat/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,7 @@ func TestUserStore(t *testing.T) {
 			createUserFoo(t, store)
 			userExists = true
 		}
-		err := store.UpdatePublicProfile(context.TODO(), &common.PublicProfile{
+		err := store.UpdatePublicProfile(context.TODO(), &api.PublicProfile{
 			Nick:        "Foo",
 			Description: "Baz",
 		})

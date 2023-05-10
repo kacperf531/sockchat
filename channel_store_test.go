@@ -1,18 +1,21 @@
 package sockchat
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"github.com/kacperf531/sockchat/common"
+	"github.com/kacperf531/sockchat/api"
+	"github.com/kacperf531/sockchat/test_utils"
+
 	"github.com/stretchr/testify/assert"
 )
 
 func TestChannelStore(t *testing.T) {
 
 	dummyUser := UserHandler{}
-	messageStore := &StubMessageStore{}
-	store, _ := NewChannelStore(messageStore)
+	messageStore := &test_utils.StubMessageStore{}
+	store := NewChannelStore(messageStore)
 
 	t.Run("returns error on nonexistent channel", func(t *testing.T) {
 		_, err := store.getChannel("Foo420")
@@ -47,17 +50,17 @@ func TestChannelStore(t *testing.T) {
 
 	t.Run("can not create channel without name", func(t *testing.T) {
 		err := store.CreateChannel("")
-		assert.EqualError(t, err, ErrEmptyChannelName.Error())
+		assert.EqualError(t, err, api.ErrEmptyChannelName.Error())
 	})
 
 	t.Run("can not join channel without providing name", func(t *testing.T) {
 		err := store.AddUserToChannel("", &dummyUser)
-		assert.EqualError(t, err, ErrEmptyChannelName.Error())
+		assert.EqualError(t, err, api.ErrEmptyChannelName.Error())
 	})
 
 	t.Run("can not leave channel without providing name", func(t *testing.T) {
 		err := store.RemoveUserFromChannel("", &dummyUser)
-		assert.EqualError(t, err, ErrEmptyChannelName.Error())
+		assert.EqualError(t, err, api.ErrEmptyChannelName.Error())
 	})
 
 	t.Run("can add user to channel", func(t *testing.T) {
@@ -77,12 +80,13 @@ func TestChannelStore(t *testing.T) {
 
 	t.Run("Channel stores messages from users", func(t *testing.T) {
 		store.CreateChannel("Qux")
-		store.MessageChannel(&common.MessageEvent{Channel: "Qux", Author: "Foo", Text: "Bar", Timestamp: 0})
+		store.MessageChannel(&api.MessageEvent{Channel: "Qux", Author: "Foo", Text: "Bar", Timestamp: 0})
+		ctx := context.Background()
 
 		messageFound := make(chan bool, 1)
 		go func() {
 			for {
-				msgs, _ := messageStore.FindMessages("Qux", "")
+				msgs, _ := messageStore.FindMessages(ctx, "Qux", "")
 				if len(msgs) == 1 {
 					messageFound <- true
 					return

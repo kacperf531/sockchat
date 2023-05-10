@@ -1,0 +1,48 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/kacperf531/sockchat";
+
+package sockchat;
+
+service Sockchat {
+  rpc RegisterProfile (RegisterProfileRequest) returns (google.protobuf.Empty) {}
+  rpc GetProfile (GetProfileRequest) returns (Profile) {}
+  rpc EditProfile (EditProfileRequest) returns (google.protobuf.Empty) {}
+  rpc GetChannelHistory (GetChannelHistoryRequest) returns (GetChannelHistoryResponse) {}
+}
+
+message RegisterProfileRequest {
+  string nick = 1;
+  string password = 2;
+  string description = 3;
+}
+
+message GetProfileRequest {
+  string nick = 1;
+}
+
+message Profile {
+  string nick = 1;
+  string description = 2;
+}
+
+message EditProfileRequest {
+  string description = 1;
+}
+
+message GetChannelHistoryRequest {
+  string channel = 1;
+  string search = 2;
+}
+
+message ChatMessage {
+  string text = 1;
+  string channel = 2;
+  string author = 3;
+  int64 timestamp = 4;
+}
+
+message GetChannelHistoryResponse {
+  repeated ChatMessage messages = 1;
+}

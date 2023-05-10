@@ -1,4 +1,4 @@
-package sockchat
+package main
 
 import (
 	"bytes"
