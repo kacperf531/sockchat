@@ -17,6 +17,8 @@ import (
 )
 
 func TestSockChatWebAPI(t *testing.T) {
+	t.Parallel()
+
 	sampleMessage := api.MessageEvent{Text: "foo", Channel: "bar", Author: "baz"}
 	messageStore := &test_utils.StubMessageStore{Messages: api.ChannelHistory{&sampleMessage}}
 	userProfiles := &sockchat.ProfileService{Store: &test_utils.UserStoreDouble{}, Cache: test_utils.TestingRedisClient}

@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserProfile(t *testing.T) {
+	t.Parallel()
 
 	store := test_utils.UserStoreDouble{}
 	service := ProfileService{&store, test_utils.TestingRedisClient}

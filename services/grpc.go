@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/kacperf531/sockchat/api"
 	pb "github.com/kacperf531/sockchat/protobuf"
@@ -28,6 +29,11 @@ var GRPCCodes = map[error]codes.Code{
 	api.ErrAuthorizationRequired: codes.Unauthenticated,
 	api.ErrBasicTokenRequired:    codes.Unauthenticated,
 	api.ErrCouldNotDecodeToken:   codes.Unauthenticated,
+	api.ErrInvalidGroupBy:        codes.InvalidArgument,
+	api.ErrInvalidDateFormat:     codes.InvalidArgument,
+	api.ErrFromMissing:           codes.InvalidArgument,
+	api.ErrToMissing:             codes.InvalidArgument,
+	api.ErrMaxReportSizeExceeded: codes.OutOfRange,
 }
 
 func NewGRPCError(err error) error {
@@ -43,20 +49,22 @@ type GrpcAPI struct {
 	pb.UnimplementedSockchatServer
 	core        *SockchatCoreService
 	authService *SockchatAuthService
+	userReports api.SockchatReportsService
 }
 
-func NewSockchatGRPCServer(core *SockchatCoreService, authService *SockchatAuthService) *grpc.Server {
-	grpcApi := &GrpcAPI{core: core, authService: authService}
+func NewSockchatGRPCServer(core *SockchatCoreService, authService *SockchatAuthService, reportsService api.SockchatReportsService) *grpc.Server {
+	grpcApi := &GrpcAPI{core: core, authService: authService, userReports: reportsService}
 	server := grpc.NewServer(grpc.UnaryInterceptor(grpcApi.AuthInterceptor))
 	pb.RegisterSockchatServer(server, grpcApi)
 	return server
 }
 
 var methodAuthorizationRequired = map[string]bool{
-	"RegisterProfile":   false,
-	"GetProfile":        true,
-	"EditProfile":       true,
-	"GetChannelHistory": true,
+	"RegisterProfile":       false,
+	"GetProfile":            true,
+	"EditProfile":           true,
+	"GetChannelHistory":     true,
+	"GetUserActivityReport": true,
 }
 
 func isProtected(fullMethodName string) bool {
@@ -128,6 +136,32 @@ func (s *GrpcAPI) GetChannelHistory(ctx context.Context, in *pb.GetChannelHistor
 	}, nil
 }
 
+func (s *GrpcAPI) GetUserActivityReport(ctx context.Context, in *pb.GetUserActivityReportRequest) (*pb.GetUserActivityReportResponse, error) {
+	err := validateGetUserActivityReportOpts(in)
+	if err != nil {
+		return nil, NewGRPCError(err)
+	}
+	parsedIn, err := parseReportsDate(in.From)
+	if err != nil {
+		return nil, NewGRPCError(err)
+	}
+	parsedOut, err := parseReportsDate(in.To)
+	if err != nil {
+		return nil, NewGRPCError(err)
+	}
+	opts := &api.UserActivityReportOptions{
+		Author:  in.Author,
+		GroupBy: api.GroupBy(in.GroupBy),
+		From:    *parsedIn,
+		To:      *parsedOut,
+	}
+	res, err := s.userReports.GetUserActivityReport(opts)
+	if err != nil {
+		return nil, err
+	}
+	return api.UserActivityReportToProto(res), nil
+}
+
 func tokenFromCtx(ctx context.Context) (string, error) {
 	meta, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -149,4 +183,38 @@ func ServeGRPC(server *grpc.Server, grpcPort int) {
 			log.Fatalf("failed to serve gRPC: %v", err)
 		}
 	}()
+}
+
+func validateGetUserActivityReportOpts(in *pb.GetUserActivityReportRequest) error {
+	if !isGroupByOK(in.GroupBy) {
+		return api.ErrInvalidGroupBy
+	}
+	if in.From == "" {
+		return api.ErrFromMissing
+	}
+	if in.To == "" {
+		return api.ErrToMissing
+	}
+	return nil
+}
+
+func isGroupByOK(groupBy string) bool {
+	allowedGroupBy := []api.GroupBy{api.GroupByHour, api.GroupByDay, api.GroupByMinute, ""}
+	for _, b := range allowedGroupBy {
+		if groupBy == string(b) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseReportsDate(date string) (*time.Time, error) {
+	if date == "" {
+		return &time.Time{}, nil
+	}
+	parsed, err := time.Parse(api.ReportsDateLayout, date)
+	if err != nil {
+		return nil, api.ErrInvalidDateFormat
+	}
+	return &parsed, nil
 }

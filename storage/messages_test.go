@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"log"
 	"testing"
 	"time"
 
@@ -15,11 +14,7 @@ import (
 func TestMessageStore(t *testing.T) {
 	godotenv.Load("../.env")
 
-	es, err := elasticsearch.NewDefaultClient()
-	if err != nil {
-		log.Fatalf("Error creating the client: %s", err)
-	}
-
+	es := mustSetUpES(t)
 	store := &MessageStore{es, "test_messages"}
 
 	t.Run("can index new message into ES", func(t *testing.T) {
@@ -44,4 +39,12 @@ func TestMessageStore(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, messages)
 	})
+}
+
+func mustSetUpES(t *testing.T) *elasticsearch.Client {
+	es, err := elasticsearch.NewDefaultClient()
+	if err != nil {
+		t.Errorf("error creating the client: %s", err)
+	}
+	return es
 }

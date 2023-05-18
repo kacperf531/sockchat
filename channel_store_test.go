@@ -12,6 +12,7 @@ import (
 )
 
 func TestChannelStore(t *testing.T) {
+	t.Parallel()
 
 	dummyUser := UserHandler{}
 	messageStore := &test_utils.StubMessageStore{}

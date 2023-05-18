@@ -48,12 +48,13 @@ func main() {
 		Messages:       messageStore,
 		ChatChannels:   channelStore,
 		ConnectedUsers: connectedUsers}
+	userReports := storage.NewReportsService(es, os.Getenv("ES_MESSAGES_INDEX"))
 
 	httpRouter := http.NewServeMux()
 
 	webAPI := services.NewWebAPI(coreService, authService)
 	webAPI.HandleRequests(httpRouter)
-	grpcAPI := services.NewSockchatGRPCServer(coreService, authService)
+	grpcAPI := services.NewSockchatGRPCServer(coreService, authService, userReports)
 	services.ServeGRPC(grpcAPI, grpcPort)
 	messagingAPI := &services.MessagingAPI{TimeoutAuthorized: defaultTimeoutAuthorized, TimeoutUnauthorized: defaultTimeoutUnauthorized, ConnectedUsers: connectedUsers, UserProfiles: userProfileService}
 	messagingAPI.HandleRequests(httpRouter)

@@ -10,6 +10,7 @@ service Sockchat {
   rpc GetProfile (GetProfileRequest) returns (Profile) {}
   rpc EditProfile (EditProfileRequest) returns (google.protobuf.Empty) {}
   rpc GetChannelHistory (GetChannelHistoryRequest) returns (GetChannelHistoryResponse) {}
+  rpc GetUserActivityReport (GetUserActivityReportRequest) returns (GetUserActivityReportResponse) {}
 }
 
 message RegisterProfileRequest {
@@ -45,4 +46,27 @@ message ChatMessage {
 
 message GetChannelHistoryResponse {
   repeated ChatMessage messages = 1;
+}
+
+message GetUserActivityReportRequest {
+  string author = 1;
+  string group_by = 2;
+  string from = 3;
+  string to = 4;
+}
+
+message MessageCount {
+  string period_start = 1;
+  int32 messages_in_period = 2;
+}
+
+message ChannelData {
+  int32 total_messages = 1;
+  repeated MessageCount message_count_distribution = 2;
+}
+
+message GetUserActivityReportResponse {
+  map<string, ChannelData> channels = 1;
+  string from = 2;
+  string to = 3;
 }

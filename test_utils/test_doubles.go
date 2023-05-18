@@ -3,6 +3,7 @@ package test_utils
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/kacperf531/sockchat/api"
 	"github.com/kacperf531/sockchat/storage"
@@ -115,4 +116,26 @@ func (s *UserStoreDouble) SelectUser(ctx context.Context, nick string) (*storage
 	}
 	return nil, api.ErrUserNotFound
 
+}
+
+type StubReportsService struct{}
+
+func (s *StubReportsService) GetUserActivityReport(opts *api.UserActivityReportOptions) (*api.UserActivityReport, error) {
+	if opts.GroupBy != "" {
+		return &api.UserActivityReport{ChannelActivity: map[string]*api.ChannelActivity{
+			"bar": {
+				TotalMessages:            100,
+				MessageCountDistribution: []api.DistributionEntry{{PeriodStart: time.Now().Format("2006-01-02"), MessagesInPeriod: 69}},
+			},
+		},
+			From: opts.From,
+			To:   opts.To}, nil
+	}
+	return &api.UserActivityReport{ChannelActivity: map[string]*api.ChannelActivity{
+		"foo": {
+			TotalMessages: 1,
+		},
+	},
+		From: opts.From,
+		To:   opts.To}, nil
 }

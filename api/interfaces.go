@@ -52,3 +52,8 @@ type SockchatWebsocketConnection interface {
 	ReadSocketMsg() (*SocketMessage, error)
 	ReadMsg() ([]byte, error)
 }
+
+// SockchatReportsService generates reports based on user activity
+type SockchatReportsService interface {
+	GetUserActivityReport(*UserActivityReportOptions) (*UserActivityReport, error)
+}

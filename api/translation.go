@@ -43,3 +43,31 @@ func ProfileToProto(in *PublicProfile) *pb.Profile {
 		Description: in.Description,
 	}
 }
+
+func UserActivityReportToProto(in *UserActivityReport) *pb.GetUserActivityReportResponse {
+	response := &pb.GetUserActivityReportResponse{
+		Channels: make(map[string]*pb.ChannelData),
+		From:     in.From.Format(ReportsDateLayout),
+		To:       in.To.Format(ReportsDateLayout),
+	}
+
+	for channelID, activity := range (*in).ChannelActivity {
+		response.Channels[channelID] = &pb.ChannelData{
+			TotalMessages:            int32(activity.TotalMessages),
+			MessageCountDistribution: messageCountDistributionToProto(activity.MessageCountDistribution),
+		}
+	}
+
+	return response
+}
+
+func messageCountDistributionToProto(in []DistributionEntry) []*pb.MessageCount {
+	out := make([]*pb.MessageCount, len(in))
+	for i, v := range in {
+		out[i] = &pb.MessageCount{
+			PeriodStart:      v.PeriodStart,
+			MessagesInPeriod: int32(v.MessagesInPeriod),
+		}
+	}
+	return out
+}

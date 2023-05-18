@@ -1,0 +1,13 @@
+{
+    "properties": {
+      "timestamp": {
+        "type": "long",
+        "fields": {
+          "as_date": {
+            "type": "date",
+            "format": "epoch_second"
+          }
+        }
+      }
+    }
+}

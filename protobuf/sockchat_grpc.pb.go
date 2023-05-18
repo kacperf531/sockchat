@@ -27,6 +27,7 @@ type SockchatClient interface {
 	GetProfile(ctx context.Context, in *GetProfileRequest, opts ...grpc.CallOption) (*Profile, error)
 	EditProfile(ctx context.Context, in *EditProfileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetChannelHistory(ctx context.Context, in *GetChannelHistoryRequest, opts ...grpc.CallOption) (*GetChannelHistoryResponse, error)
+	GetUserActivityReport(ctx context.Context, in *GetUserActivityReportRequest, opts ...grpc.CallOption) (*GetUserActivityReportResponse, error)
 }
 
 type sockchatClient struct {
@@ -73,6 +74,15 @@ func (c *sockchatClient) GetChannelHistory(ctx context.Context, in *GetChannelHi
 	return out, nil
 }
 
+func (c *sockchatClient) GetUserActivityReport(ctx context.Context, in *GetUserActivityReportRequest, opts ...grpc.CallOption) (*GetUserActivityReportResponse, error) {
+	out := new(GetUserActivityReportResponse)
+	err := c.cc.Invoke(ctx, "/sockchat.Sockchat/GetUserActivityReport", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SockchatServer is the server API for Sockchat service.
 // All implementations must embed UnimplementedSockchatServer
 // for forward compatibility
@@ -81,6 +91,7 @@ type SockchatServer interface {
 	GetProfile(context.Context, *GetProfileRequest) (*Profile, error)
 	EditProfile(context.Context, *EditProfileRequest) (*emptypb.Empty, error)
 	GetChannelHistory(context.Context, *GetChannelHistoryRequest) (*GetChannelHistoryResponse, error)
+	GetUserActivityReport(context.Context, *GetUserActivityReportRequest) (*GetUserActivityReportResponse, error)
 	mustEmbedUnimplementedSockchatServer()
 }
 
@@ -99,6 +110,9 @@ func (UnimplementedSockchatServer) EditProfile(context.Context, *EditProfileRequ
 }
 func (UnimplementedSockchatServer) GetChannelHistory(context.Context, *GetChannelHistoryRequest) (*GetChannelHistoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChannelHistory not implemented")
+}
+func (UnimplementedSockchatServer) GetUserActivityReport(context.Context, *GetUserActivityReportRequest) (*GetUserActivityReportResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserActivityReport not implemented")
 }
 func (UnimplementedSockchatServer) mustEmbedUnimplementedSockchatServer() {}
 
@@ -185,6 +199,24 @@ func _Sockchat_GetChannelHistory_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Sockchat_GetUserActivityReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserActivityReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SockchatServer).GetUserActivityReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sockchat.Sockchat/GetUserActivityReport",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SockchatServer).GetUserActivityReport(ctx, req.(*GetUserActivityReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Sockchat_ServiceDesc is the grpc.ServiceDesc for Sockchat service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -207,6 +239,10 @@ var Sockchat_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetChannelHistory",
 			Handler:    _Sockchat_GetChannelHistory_Handler,
+		},
+		{
+			MethodName: "GetUserActivityReport",
+			Handler:    _Sockchat_GetUserActivityReport_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

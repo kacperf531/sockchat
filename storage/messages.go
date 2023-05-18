@@ -27,12 +27,13 @@ type searchQuery struct {
 	Query struct {
 		Bool boolQueryFilter `json:"bool"`
 	} `json:"query"`
-	Sort []timestampOrder `json:"sort"`
+	Sort []timestampOrder `json:"sort,omitempty"`
+	Aggs interface{}      `json:"aggs,omitempty"`
 }
 
 type boolQueryFilter struct {
-	Filter []termFilter `json:"filter"`
-	Must   *must        `json:"must,omitempty"`
+	Filter []filters `json:"filter"`
+	Must   *must     `json:"must,omitempty"`
 }
 
 type must struct {
@@ -44,12 +45,25 @@ type must struct {
 	} `json:"match"`
 }
 
-type termFilter struct {
-	Term struct {
-		Channel struct {
-			Value string `json:"value"`
-		} `json:"channel.keyword"`
-	} `json:"term"`
+type filters struct {
+	Term  *term   `json:"term,omitempty"`
+	Range *range_ `json:"range,omitempty"`
+}
+
+type term struct {
+	Channel *termFilterValue `json:"channel.keyword,omitempty"`
+	Author  *termFilterValue `json:"author.keyword,omitempty"`
+}
+
+type range_ struct {
+	Timestamp struct {
+		Gte int64 `json:"gte"`
+		Lte int64 `json:"lte"`
+	} `json:"timestamp"`
+}
+
+type termFilterValue struct {
+	Value string `json:"value"`
 }
 
 type timestampOrder struct {
@@ -68,9 +82,10 @@ func (s *MessageStore) buildSearchQuery(channel, soughtPhrase string) (*bytes.Re
 		q.Query.Bool.Must = m
 	}
 
-	var tf termFilter
-	tf.Term.Channel.Value = channel
-	q.Query.Bool.Filter = []termFilter{tf}
+	filter := filters{
+		Term: &term{Channel: &termFilterValue{Value: channel}},
+	}
+	q.Query.Bool.Filter = []filters{filter}
 
 	var ts timestampOrder
 	ts.Timestamp.Order = "desc"
